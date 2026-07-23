@@ -6,7 +6,7 @@ Tracked gaps and debt. Each block below is picked up by
 **Marker format**
 
 ```md
-<!-- issue: unique-kebab-id -->
+<!-- issue: unique-kebab-id #1 -->
 ### Human title
 Body / acceptance criteria…
 ```
@@ -17,7 +17,7 @@ After the sync workflow runs, markers become `<!-- issue: id #123 -->`.
 
 ## Active shortfalls
 
-<!-- issue: browser-drag-instruments -->
+<!-- issue: browser-drag-instruments #2 -->
 ### Browser panel instruments are non-functional
 Dragging Drum Kit / Bass / Keys from the left browser does nothing.
 Items are static hints only — no `addTrack` / instrument assign path.
@@ -29,7 +29,7 @@ Items are static hints only — no `addTrack` / instrument assign path.
 
 **Priority:** P1 · **Area:** shell / session · **Source:** code review 2026-07-23
 
-<!-- issue: no-project-persistence -->
+<!-- issue: no-project-persistence #3 -->
 ### No save / load project persistence
 Projects live only in memory. Refresh loses all edits. Roadmap item from README.
 
@@ -40,7 +40,7 @@ Projects live only in memory. Refresh loses all edits. Roadmap item from README.
 
 **Priority:** P1 · **Area:** store · **Source:** README roadmap
 
-<!-- issue: no-automated-tests -->
+<!-- issue: no-automated-tests #4 -->
 ### No automated test suite
 `package.json` has no `test` script. Regressions rely on manual QA + `npm run build`.
 
@@ -51,7 +51,7 @@ Projects live only in memory. Refresh loses all edits. Roadmap item from README.
 
 **Priority:** P1 · **Area:** tooling · **Source:** code review 2026-07-23
 
-<!-- issue: npm-audit-highs -->
+<!-- issue: npm-audit-highs #5 -->
 ### npm audit reports high severity dev-tooling vulns
 Vite / Rollup / PostCSS advisories (mostly dev-server). Run `npm audit fix` and bump.
 
@@ -61,7 +61,7 @@ Vite / Rollup / PostCSS advisories (mostly dev-server). Run `npm audit fix` and 
 
 **Priority:** P2 · **Area:** tooling / security · **Source:** npm audit 2026-07-23
 
-<!-- issue: master-volume-missing -->
+<!-- issue: master-volume-missing #6 -->
 ### No master volume control in the store
 Engine master gain is fixed at `0.9`. Master strip is meter-only.
 
@@ -71,7 +71,7 @@ Engine master gain is fixed at `0.9`. Master strip is meter-only.
 
 **Priority:** P2 · **Area:** mixer / engine · **Source:** code review
 
-<!-- issue: meter-raf-storm -->
+<!-- issue: meter-raf-storm #7 -->
 ### Per-strip requestAnimationFrame meter loops
 Session headers, mixer channels, master, and ASCII wave each run independent rAF loops.
 Fine at 4 tracks; will not scale.
@@ -82,7 +82,7 @@ Fine at 4 tracks; will not scale.
 
 **Priority:** P3 · **Area:** performance · **Source:** code review
 
-<!-- issue: bundle-size-tone -->
+<!-- issue: bundle-size-tone #8 -->
 ### Production JS bundle ~600 kB (Tone.js dominates)
 First load is heavy. Consider dynamic `import('tone')` after first user gesture.
 
@@ -92,7 +92,7 @@ First load is heavy. Consider dynamic `import('tone')` after first user gesture.
 
 **Priority:** P2 · **Area:** engine / perf · **Source:** vite build warning
 
-<!-- issue: midi-input -->
+<!-- issue: midi-input #9 -->
 ### MIDI input not implemented
 Roadmap: play/record from hardware via Web MIDI API.
 
@@ -102,7 +102,7 @@ Roadmap: play/record from hardware via Web MIDI API.
 
 **Priority:** P2 · **Area:** engine / devices · **Source:** README roadmap
 
-<!-- issue: audio-tracks-samples -->
+<!-- issue: audio-tracks-samples #10 -->
 ### No audio tracks or sample-based kits
 Everything is pure synth. Users cannot import/record audio.
 
@@ -112,7 +112,7 @@ Everything is pure synth. Users cannot import/record audio.
 
 **Priority:** P3 · **Area:** engine · **Source:** README roadmap
 
-<!-- issue: eslint-ui-template-noise -->
+<!-- issue: eslint-ui-template-noise #11 -->
 ### ESLint fails on shadcn ui template exports
 `components/ui/*` trips `react-refresh/only-export-components` and sidebar purity rules.
 CI currently continues-on-error for lint.
@@ -123,7 +123,7 @@ CI currently continues-on-error for lint.
 
 **Priority:** P2 · **Area:** tooling · **Source:** eslint run
 
-<!-- issue: undo-redo -->
+<!-- issue: undo-redo #12 -->
 ### No undo / redo
 Destructive edits (delete clip, paint notes) cannot be reversed.
 
@@ -133,7 +133,7 @@ Destructive edits (delete clip, paint notes) cannot be reversed.
 
 **Priority:** P2 · **Area:** store · **Source:** code review
 
-<!-- issue: scene-matrix-drift -->
+<!-- issue: scene-matrix-drift #13 -->
 ### Scene.slotByTrack can drift from sessionMatrix
 Launch path now uses matrix, but scene objects still store a snapshot that is not always updated on `setSlot` / `createClip`.
 
