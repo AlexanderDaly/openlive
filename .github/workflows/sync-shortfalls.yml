@@ -1,11 +1,11 @@
 name: Sync shortfalls to issues
 
 # Creates GitHub issues from SHORTFALLS.md entries that are not yet tracked.
-# Marker format in SHORTFALLS.md:
+# Only parses the "## Active shortfalls" section.
+# Marker format:
 #   <!-- issue: shortfall-id -->
 #   ### Title here
-#   ...body until next ### or EOF
-# After creating an issue, the workflow opens a PR that rewrites the marker to:
+# After creating an issue, commits:
 #   <!-- issue: shortfall-id #123 -->
 
 on:
@@ -40,51 +40,65 @@ jobs:
               return;
             }
             let md = fs.readFileSync(path, 'utf8');
-            const re = /<!--\s*issue:\s*([a-z0-9-]+)(?:\s+#(\d+))?\s*-->\s*\n###\s+(.+)\n([\s\S]*?)(?=\n<!--\s*issue:|\n## |\n# |\s*$)/gi;
+
+            // Only Active shortfalls section (avoid doc examples)
+            const activeIdx = md.search(/^## Active shortfalls\s*$/m);
+            if (activeIdx < 0) {
+              core.info('No Active shortfalls section');
+              return;
+            }
+            const head = md.slice(0, activeIdx);
+            let active = md.slice(activeIdx);
+            const nextH2 = active.search(/\n## (?!Active shortfalls)/);
+            let tail = '';
+            if (nextH2 >= 0) {
+              tail = active.slice(nextH2);
+              active = active.slice(0, nextH2);
+            }
+
+            const re = /<!--\s*issue:\s*([a-z0-9-]+)(?:\s+#(\d+))?\s*-->\s*\n###\s+(.+)\n([\s\S]*?)(?=\n<!--\s*issue:|\s*$)/gi;
             const updates = [];
             let m;
-            const blocks = [];
-            while ((m = re.exec(md)) !== null) {
-              blocks.push({
-                full: m[0],
-                id: m[1],
-                existing: m[2] || null,
-                title: m[3].trim(),
-                body: m[4].trim(),
-                index: m.index,
-              });
-            }
-            core.info(`Found ${blocks.length} shortfall block(s)`);
-
-            for (const b of blocks) {
-              if (b.existing) {
-                core.info(`Skip ${b.id} — already #${b.existing}`);
+            while ((m = re.exec(active)) !== null) {
+              const id = m[1];
+              const existing = m[2] || null;
+              const title = m[3].trim();
+              const body = m[4].trim();
+              if (!id || id === 'unique-kebab-id' || id === 'your-kebab-id') {
+                core.info(`Skip placeholder id ${id}`);
                 continue;
               }
-              // Dedupe by title prefix search
-              const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue in:title "${b.title}"`;
+              if (existing) {
+                core.info(`Skip ${id} — already #${existing}`);
+                continue;
+              }
+
+              // Dedupe: open issue with same shortfall title
+              const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title.replace(/"/g, '')}"`;
               const found = await github.rest.search.issuesAndPullRequests({ q, per_page: 5 });
-              let number = found.data.items.find(i => i.title.includes(b.title))?.number;
+              let number = found.data.items.find((i) =>
+                i.title === `[shortfall] ${title}` || i.title.includes(title)
+              )?.number;
+
               if (!number) {
                 const created = await github.rest.issues.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  title: `[shortfall] ${b.title}`,
+                  title: `[shortfall] ${title}`,
                   body: [
-                    b.body,
+                    body,
                     '',
                     '---',
-                    `Auto-synced from \`SHORTFALLS.md\` id \`${b.id}\`.`,
-                    'Edit the shortfall file or this issue; keep the marker in sync.',
+                    `Auto-synced from \`SHORTFALLS.md\` id \`${id}\`.`,
                   ].join('\n'),
                   labels: ['shortfall', 'needs-triage', 'automated'],
                 });
                 number = created.data.number;
-                core.info(`Created #${number} for ${b.id}`);
+                core.info(`Created #${number} for ${id}`);
               } else {
-                core.info(`Matched existing #${number} for ${b.id}`);
+                core.info(`Matched existing #${number} for ${id}`);
               }
-              updates.push({ id: b.id, number, title: b.title });
+              updates.push({ id, number });
             }
 
             if (!updates.length) {
@@ -92,11 +106,14 @@ jobs:
               return;
             }
 
-            let next = md;
+            let nextActive = active;
             for (const u of updates) {
-              const from = new RegExp(`<!--\\s*issue:\\s*${u.id}\\s*-->`, 'i');
-              next = next.replace(from, `<!-- issue: ${u.id} #${u.number} -->`);
+              nextActive = nextActive.replace(
+                new RegExp(`<!--\\s*issue:\\s*${u.id}\\s*-->`, 'i'),
+                `<!-- issue: ${u.id} #${u.number} -->`,
+              );
             }
+            const next = head + nextActive + tail;
             if (next === md) {
               core.info('Markdown unchanged');
               return;

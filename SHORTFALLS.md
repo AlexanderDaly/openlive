@@ -1,17 +1,21 @@
 # OpenLive shortfalls
 
-Tracked gaps and debt. Each block below is picked up by
+Tracked gaps and debt. Each block under **Active shortfalls** is picked up by
 `.github/workflows/sync-shortfalls.yml` and turned into a GitHub issue.
 
-**Marker format**
+**Marker format** (only outside fenced code blocks):
 
-```md
-<!-- issue: unique-kebab-id #1 -->
+```
+issue-marker: your-kebab-id
 ### Human title
 Body / acceptance criteria…
 ```
 
-After the sync workflow runs, markers become `<!-- issue: id #123 -->`.
+In this file the live marker HTML comment looks like:
+
+`<!-- issue: your-kebab-id -->` before a `###` heading.
+
+After sync, markers become `<!-- issue: id #123 -->`.
 
 ---
 
