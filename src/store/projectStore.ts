@@ -197,8 +197,8 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   scenes: demoScenes,
   arrangementClips: demoArrangement,
 
-  // playback / selection
-  playingClipByTrack: {},
+  // playback / selection — seed Scene A so first Play has sound (README promise)
+  playingClipByTrack: slotFor(0),
   selectedClipId: null,
 
   // ---- track actions ----
