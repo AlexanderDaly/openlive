@@ -239,31 +239,7 @@ No gradients on chrome (contract). ASCII glow is the one intentional light effec
 
 ---
 
-## 8. GitHub project management
-
-**Repo:** https://github.com/AlexanderDaly/openlive (public)
-
-| Tool | Purpose |
-|------|---------|
-| Issues + templates | bug / feature / shortfall forms |
-| `SHORTFALLS.md` + `sync-shortfalls.yml` | Auto-open issues from tracked gaps |
-| Labels (`scripts/sync-labels.mjs`) | P0–P3, area/*, shortfall, automated… |
-| Milestones | P1 Near term · P2 Backlog · P3 Someday |
-| CI (`ci.yml`) | `npm ci` + `npm run build` on push/PR |
-| Dependabot | Weekly npm + Actions updates |
-| Stale bot | Closes inactive issues/PRs |
-| PR template | Contract checklist |
-
-**Projects v2 board:** token needs `project` + `read:project` scopes:
-
-```bash
-gh auth refresh -s project,read:project
-gh project create --owner AlexanderDaly --title "OpenLive Roadmap"
-```
-
-Then link open issues to the board in the GitHub UI.
-
-## 9. Changelog (condensed)
+## 8. Changelog (condensed)
 
 | Date | Change |
 |------|--------|
@@ -273,7 +249,6 @@ Then link open issues to the board in the GitHub UI.
 | 2026-07-23 | Session playing UI; pan label; package rename |
 | 2026-07-23 | Beatbox-style `AsciiWave` in Browser + Transport |
 | 2026-07-23 | This DEVLOG |
-| 2026-07-23 | Public GitHub repo + issue automation + milestones |
 
 ---
 

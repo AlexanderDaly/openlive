@@ -1,9 +1,5 @@
 # OpenLive
 
-[![CI](https://github.com/AlexanderDaly/openlive/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexanderDaly/openlive/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Issues](https://img.shields.io/github/issues/AlexanderDaly/openlive)](https://github.com/AlexanderDaly/openlive/issues)
-
 **OpenLive — a free, open-source, browser-based DAW inspired by Ableton Live.**
 
 No installs, no accounts, no audio files to manage: OpenLive runs entirely in
@@ -90,12 +86,9 @@ OpenLive is early and welcoming contributions. Planned directions:
 - **Save / load projects** — export/import project JSON, local persistence
 - **PWA** — installable, offline-capable app shell
 
-Tracked shortfalls live in [`SHORTFALLS.md`](./SHORTFALLS.md) and sync to
-GitHub Issues automatically. See [`CONTRIBUTING.md`](./CONTRIBUTING.md),
-[`DEVLOG.md`](./DEVLOG.md), and `src/features/CONTRACT.md`.
-
-To contribute: fork, branch, and open a PR. Keep the one-way store→engine
-sync contract intact, match the dark palette, and ensure `npm run build` passes.
+To contribute: fork, branch, and open a PR. Please keep the one-way
+store→engine sync contract intact (see `src/features/CONTRACT.md`), match the
+existing dark palette, and make sure `npm run build` passes cleanly.
 
 ## License
 
