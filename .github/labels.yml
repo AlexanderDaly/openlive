@@ -1,0 +1,67 @@
+# Applied via scripts/sync-labels (gh) or manually once.
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+- name: shortfall
+  color: "e4e669"
+  description: Known gap / review debt / roadmap item
+- name: needs-triage
+  color: "fbca04"
+  description: Needs prioritization
+- name: automated
+  color: "c5def5"
+  description: Opened or updated by bots/workflows
+- name: dependencies
+  color: "0366d6"
+  description: Dependency updates
+- name: P0
+  color: "b60205"
+  description: Blocks core use
+- name: P1
+  color: "ff8c2e"
+  description: High value soon
+- name: P2
+  color: "0e8a16"
+  description: Nice to have
+- name: P3
+  color: "ededed"
+  description: Someday
+- name: area/session
+  color: "5319e7"
+  description: Session view
+- name: area/arrangement
+  color: "5319e7"
+  description: Arrangement view
+- name: area/mixer
+  color: "5319e7"
+  description: Mixer
+- name: area/editor
+  color: "5319e7"
+  description: Clip editor / grids
+- name: area/devices
+  color: "5319e7"
+  description: Device rack / drum pads
+- name: area/engine
+  color: "5319e7"
+  description: Tone.js audio engine
+- name: area/shell
+  color: "5319e7"
+  description: Transport / browser / ASCII wave
+- name: area/tooling
+  color: "5319e7"
+  description: CI, docs, repo automation
+- name: stale
+  color: "ffffff"
+  description: Inactive issue/PR
+- name: security
+  color: "ee0701"
+  description: Security / advisories
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+- name: pinned
+  color: "000000"
+  description: Exempt from stale bot

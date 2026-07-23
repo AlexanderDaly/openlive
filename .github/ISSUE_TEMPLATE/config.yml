@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Devlog / architecture notes
+    url: https://github.com/AlexanderDaly/openlive/blob/main/DEVLOG.md
+    about: Read the project bible before filing architecture questions.
+  - name: Feature contract
+    url: https://github.com/AlexanderDaly/openlive/blob/main/src/features/CONTRACT.md
+    about: Store ↔ engine rules feature work must obey.

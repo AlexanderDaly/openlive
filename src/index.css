@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* OpenLive runs dark-only (Ableton-style). The shadcn tokens below are
+   the dark palette, applied at :root so every ui component matches. */
+@layer base {
+  :root {
+    --background: 0 0% 10.2%; /* #1a1a1a */
+    --foreground: 0 0% 90%;
+    --card: 0 0% 13%;
+    --card-foreground: 0 0% 90%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 90%;
+    --primary: 28 100% 59%; /* #ff8c2e accent */
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 17%;
+    --secondary-foreground: 0 0% 90%;
+    --muted: 0 0% 17%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 28 100% 59%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 62.8% 45%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 20%;
+    --input: 0 0% 22%;
+    --ring: 28 100% 59%;
+    --radius: 0.375rem;
+    --sidebar-background: 0 0% 12%;
+    --sidebar-foreground: 0 0% 90%;
+    --sidebar-primary: 28 100% 59%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 17%;
+    --sidebar-accent-foreground: 0 0% 90%;
+    --sidebar-border: 0 0% 20%;
+    --sidebar-ring: 28 100% 59%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: dark;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-color: #1a1a1a;
+    font-family:
+      'Inter',
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior: none;
+    user-select: none;
+  }
+}

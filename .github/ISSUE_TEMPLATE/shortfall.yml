@@ -1,0 +1,52 @@
+name: Project shortfall
+description: Track a known gap, debt item, or review finding
+title: "[shortfall] "
+labels: ["shortfall", "needs-triage"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Bug debt
+        - Missing feature (roadmap)
+        - Architecture / contract debt
+        - Performance
+        - Accessibility
+        - Security / dependencies
+        - Docs / DX
+        - Test coverage
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is missing or wrong, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] …
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: "Where this came from (code review, user report, DEVLOG, audit…)"
+      placeholder: DEVLOG 2026-07-23 review

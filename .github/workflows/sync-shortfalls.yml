@@ -1,0 +1,110 @@
+name: Sync shortfalls to issues
+
+# Creates GitHub issues from SHORTFALLS.md entries that are not yet tracked.
+# Marker format in SHORTFALLS.md:
+#   <!-- issue: shortfall-id -->
+#   ### Title here
+#   ...body until next ### or EOF
+# After creating an issue, the workflow opens a PR that rewrites the marker to:
+#   <!-- issue: shortfall-id #123 -->
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "SHORTFALLS.md"
+      - ".github/workflows/sync-shortfalls.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync SHORTFALLS.md → issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'SHORTFALLS.md';
+            if (!fs.existsSync(path)) {
+              core.info('No SHORTFALLS.md — skip');
+              return;
+            }
+            let md = fs.readFileSync(path, 'utf8');
+            const re = /<!--\s*issue:\s*([a-z0-9-]+)(?:\s+#(\d+))?\s*-->\s*\n###\s+(.+)\n([\s\S]*?)(?=\n<!--\s*issue:|\n## |\n# |\s*$)/gi;
+            const updates = [];
+            let m;
+            const blocks = [];
+            while ((m = re.exec(md)) !== null) {
+              blocks.push({
+                full: m[0],
+                id: m[1],
+                existing: m[2] || null,
+                title: m[3].trim(),
+                body: m[4].trim(),
+                index: m.index,
+              });
+            }
+            core.info(`Found ${blocks.length} shortfall block(s)`);
+
+            for (const b of blocks) {
+              if (b.existing) {
+                core.info(`Skip ${b.id} — already #${b.existing}`);
+                continue;
+              }
+              // Dedupe by title prefix search
+              const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue in:title "${b.title}"`;
+              const found = await github.rest.search.issuesAndPullRequests({ q, per_page: 5 });
+              let number = found.data.items.find(i => i.title.includes(b.title))?.number;
+              if (!number) {
+                const created = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: `[shortfall] ${b.title}`,
+                  body: [
+                    b.body,
+                    '',
+                    '---',
+                    `Auto-synced from \`SHORTFALLS.md\` id \`${b.id}\`.`,
+                    'Edit the shortfall file or this issue; keep the marker in sync.',
+                  ].join('\n'),
+                  labels: ['shortfall', 'needs-triage', 'automated'],
+                });
+                number = created.data.number;
+                core.info(`Created #${number} for ${b.id}`);
+              } else {
+                core.info(`Matched existing #${number} for ${b.id}`);
+              }
+              updates.push({ id: b.id, number, title: b.title });
+            }
+
+            if (!updates.length) {
+              core.info('No marker updates needed');
+              return;
+            }
+
+            let next = md;
+            for (const u of updates) {
+              const from = new RegExp(`<!--\\s*issue:\\s*${u.id}\\s*-->`, 'i');
+              next = next.replace(from, `<!-- issue: ${u.id} #${u.number} -->`);
+            }
+            if (next === md) {
+              core.info('Markdown unchanged');
+              return;
+            }
+            fs.writeFileSync(path, next);
+            const { execSync } = require('child_process');
+            execSync('git config user.name "github-actions[bot]"');
+            execSync('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
+            execSync('git add SHORTFALLS.md');
+            execSync('git commit -m "chore: link SHORTFALLS.md markers to issues"');
+            execSync('git push');

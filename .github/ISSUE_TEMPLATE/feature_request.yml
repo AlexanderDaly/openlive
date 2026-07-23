@@ -1,0 +1,55 @@
+name: Feature request
+description: Propose a new capability or UX improvement
+title: "[feat] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / opportunity
+      description: What user need does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? Keep the store→engine contract intact.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Session view
+        - Arrangement view
+        - Mixer
+        - Clip editor
+        - Devices
+        - Transport / engine
+        - Persistence / project I/O
+        - MIDI / hardware
+        - Shell / browser panel
+        - Tooling / CI
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Suggested priority
+      options:
+        - P0 — blocks core use
+        - P1 — high value soon
+        - P2 — nice to have
+        - P3 — someday
+    validations:
+      required: true
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Contract check
+      options:
+        - label: I read DEVLOG.md / CONTRACT.md and this does not require the engine to write the store
+          required: true

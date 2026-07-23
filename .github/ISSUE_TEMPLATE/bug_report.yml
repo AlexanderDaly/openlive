@@ -1,0 +1,68 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping OpenLive. Audio bugs need browser + OS details.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong in one or two sentences?
+      placeholder: Launching scene B does not start the bass clip…
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. npm run dev
+        2. Press Play
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Session view
+        - Arrangement view
+        - Mixer
+        - Clip editor / step grid
+        - Devices / drum rack
+        - Transport / audio engine
+        - ASCII wave / shell UI
+        - Build / tooling
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: "Browser, OS, and how you ran the app (e.g. Chrome 128 / Windows 11 / npm run dev)"
+      placeholder: Chrome 131 · Windows 11 · localhost:3000
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console / network logs
+      render: shell
