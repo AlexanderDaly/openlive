@@ -1,0 +1,62 @@
+name: Deploy to GitHub Pages
+
+# Builds the app and publishes it to GitHub Pages.
+#
+# SETUP REQUIRED (one-time, repo admin):
+#   Settings → Pages → Source: "GitHub Actions"
+# The --base=/openlive/ flag matches the repo name so asset URLs resolve
+# under https://<owner>.github.io/openlive/. If the repo is renamed or a
+# custom domain is used, update the flag accordingly.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build with Pages base path
+        run: npm run build -- --base=/openlive/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

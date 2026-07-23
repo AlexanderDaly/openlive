@@ -172,6 +172,31 @@ Colors: deep teal field `#0a0e12`, mid `#5eb8d4`, hot `#22d3ee` — sits next to
 npm run build  → PASS (tsc + vite)
 ```
 
+### 2026-07-23 — Phase 2 kickoff
+
+#### Scene A seed fix (committed)
+
+- `ef4ed3b` — `playingClipByTrack` is now seeded from `slotFor(0)` at store
+  init, so the first press of Play launches scene A's clips instead of silence.
+
+#### Phase 2 — "Playable, Reliable, Tested"
+
+- Milestone created, due **2026-08-20**; 19 issues assigned
+  (WS0 tests/tooling: #4 #11 #5 #50 · WS1 audio bugs: #39 #40 ·
+  WS2 editor/UX: #42–#48 · WS3 persistence: #3 · WS4 instruments: #2 ·
+  WS5 store/UX: #6 #12 #13 · WS6 perf: #8).
+- `PHASE2.md` written as the implementer plan (workstreams, scope, order).
+- Deferred to Phase 3: **#7** meter rAF storm, **#9** MIDI in,
+  **#10** audio tracks/samples, **#49** metronome drift.
+
+#### New workflows
+
+- `.github/workflows/test.yml` — runs tests on push/PR; skips gracefully with
+  a notice until a `test` script lands with #4.
+- `.github/workflows/deploy-pages.yml` — builds with base `/openlive/` and
+  deploys to GitHub Pages on push to main + manual dispatch. **Repo admin must
+  set Settings → Pages → Source = GitHub Actions** or deploys will fail.
+
 ---
 
 ## 4. Gotchas / tribal knowledge
@@ -199,6 +224,11 @@ npm run build  → PASS (tsc + vite)
 - [ ] Browser panel actual drag-to-add-track
 - [ ] Master volume in store
 - [ ] Undo / redo
+
+**Phase 2** (milestone "Phase 2 — Playable, Reliable, Tested", due 2026-08-20)
+tracks several of these as issues: **#2** browser instruments, **#3** save/load,
+**#4** tests, **#6** master volume, **#8** Tone.js bundle, **#11** shadcn lint,
+**#12** undo/redo, **#13** slotByTrack drift. See `PHASE2.md`.
 
 ---
 
@@ -274,6 +304,8 @@ Then link open issues to the board in the GitHub UI.
 | 2026-07-23 | Beatbox-style `AsciiWave` in Browser + Transport |
 | 2026-07-23 | This DEVLOG |
 | 2026-07-23 | Public GitHub repo + issue automation + milestones |
+| 2026-07-23 | Scene A seed fix (`playingClipByTrack: slotFor(0)`) — first Play has sound |
+| 2026-07-23 | Phase 2 kickoff: milestone, `test.yml` + `deploy-pages.yml`, `PHASE2.md` |
 
 ---
 

@@ -1,0 +1,55 @@
+name: Tests
+
+# Runs the unit test suite once it exists.
+#
+# TEMPORARY SKIP BEHAVIOR:
+# package.json has no "test" script yet. Until Phase 2 WS0 (issue #4) lands
+# Vitest, the detect step below reports "No test script yet" and the job
+# exits 0 so CI stays green. Once `npm test` exists, the suite runs and
+# failures block the job. Remove the skip step when #4 closes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Detect test script
+        id: detect
+        run: |
+          if node -p "Boolean((require('./package.json').scripts || {}).test)" | grep -q true; then
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests
+        if: steps.detect.outputs.has_tests == 'true'
+        run: npm test
+
+      - name: Skip — no test script yet
+        if: steps.detect.outputs.has_tests != 'true'
+        run: |
+          echo "No test script yet — Phase 2 WS0 (issue #4) will add Vitest; see PHASE2.md"
+          echo "This is a passing placeholder so CI stays green until tests exist."
