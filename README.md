@@ -1,6 +1,7 @@
 # OpenLive
 
 [![CI](https://github.com/AlexanderDaly/openlive/actions/workflows/ci.yml/badge.svg)](https://github.com/AlexanderDaly/openlive/actions/workflows/ci.yml)
+[![Tests](https://github.com/AlexanderDaly/openlive/actions/workflows/test.yml/badge.svg)](https://github.com/AlexanderDaly/openlive/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Issues](https://img.shields.io/github/issues/AlexanderDaly/openlive)](https://github.com/AlexanderDaly/openlive/issues)
 
@@ -89,6 +90,10 @@ OpenLive is early and welcoming contributions. Planned directions:
 - **Plugin FX** — a proper device chain with reorderable, automatable FX
 - **Save / load projects** — export/import project JSON, local persistence
 - **PWA** — installable, offline-capable app shell
+
+Current Phase 2 scope ("Playable, Reliable, Tested", due 2026-08-20) is tracked
+in [`PHASE2.md`](./PHASE2.md) and the
+[GitHub milestone](https://github.com/AlexanderDaly/openlive/milestone/4).
 
 Tracked shortfalls live in [`SHORTFALLS.md`](./SHORTFALLS.md) and sync to
 GitHub Issues automatically. See [`CONTRIBUTING.md`](./CONTRIBUTING.md),
