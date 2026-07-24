@@ -9,8 +9,10 @@
  * The only engine API UI code may call directly:
  *   - `engine.ensureStarted()`  (from a user gesture, before playing)
  *   - `engine.previewNote(trackId, note, velocity?)` (one-shot audition)
+ *   - `engine.previewClip(clipId)` (one-shot clip audition, transport-free)
  *   - `engine.getTrackMeter(id)` / `engine.getMasterMeter()` (read-only)
- *   - `engine.getTransportPosition()` / `engine.isStarted()` (read-only)
+ *   - `engine.getTransportPosition()` / `engine.getTransportStep()` (read-only)
+ *   - `engine.isStarted()` (read-only)
  *
  * All timing is expressed in Transport TICKS ("<n>i"), so patterns
  * stay correct when the BPM changes mid-playback.
@@ -268,6 +270,16 @@ class AudioEngine {
   }
 
   /**
+   * Absolute 16th-note step derived from transport ticks (0 before unlock).
+   * Prefer this over parsing getTransportPosition() — tick math stays
+   * correct for non-bar-aligned clips and mid-play BPM changes.
+   */
+  getTransportStep(): number {
+    if (!this.started) return 0;
+    return Math.floor(Tone.getTransport().ticks / this.sixteenthTicks());
+  }
+
+  /**
    * One-shot audition of a note through the track's existing chain
    * (instrument → filter → channel/sends → master), so mute/solo/fx apply.
    * Safe no-op before `ensureStarted()` or for an unknown track id.
@@ -279,6 +291,24 @@ class AudioEngine {
     const chain = this.chains.get(trackId);
     if (!chain) return;
     chain.voice.trigger(note, 0.3, velocity, Tone.now());
+  }
+
+  /**
+   * One-shot audition of a whole clip through the track's real chain,
+   * scheduled independently of the transport (used by the clip editor in
+   * arrangement view, where ▶ must audition, not start timeline playback).
+   * Safe no-op before `ensureStarted()` or for an unknown clip id.
+   */
+  previewClip(clipId: string): void {
+    if (!this.started) return;
+    const clip = useProjectStore.getState().clips[clipId];
+    const chain = clip ? this.chains.get(clip.trackId) : undefined;
+    if (!clip || !chain) return;
+    const now = Tone.now();
+    const secPerStep = this.stepSeconds(1);
+    for (const n of clip.notes) {
+      chain.voice.trigger(n.note, this.stepSeconds(n.duration ?? 1), n.velocity, now + n.step * secPerStep);
+    }
   }
 
   /* ---------------- internal ---------------- */

@@ -1,9 +1,8 @@
 /**
- * useTransportStep — polls `engine.getTransportPosition()` via rAF and
- * returns the absolute 16th-note step index (bars*16 + beats*4 + sixteenth).
- * Only re-renders when the step actually changes. Returns 0 when stopped
- * or when the engine has not been unlocked yet (meters/getters may be
- * undefined before the first user gesture).
+ * useTransportStep — polls `engine.getTransportStep()` via rAF and returns
+ * the absolute 16th-note step index (tick-derived, so it stays correct for
+ * non-bar-aligned positions). Only re-renders when the step actually
+ * changes. Returns 0 when stopped or before the engine is unlocked.
  */
 import { useEffect, useState } from 'react';
 import { engine } from '@/audio/engine';
@@ -18,12 +17,7 @@ export function useTransportStep(): number {
     let raf = 0;
     let last = -1;
     const tick = () => {
-      const pos = engine.getTransportPosition(); // 'bars:beats:sixteenths'
-      const parts = pos.split(':');
-      const bars = Number.parseInt(parts[0] ?? '0', 10) || 0;
-      const beats = Number.parseInt(parts[1] ?? '0', 10) || 0;
-      const sixteenths = Number.parseFloat(parts[2] ?? '0') || 0;
-      const s = bars * 16 + beats * 4 + Math.floor(sixteenths);
+      const s = engine.getTransportStep();
       if (s !== last) {
         last = s;
         setStep(s);

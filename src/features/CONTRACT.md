@@ -86,7 +86,16 @@ Read-only API you may use:
   read with `meter.getValue()` inside `requestAnimationFrame`. Undefined until first `ensureStarted()`.
 - `engine.getMasterMeter(): Tone.Meter | undefined`
 - `engine.getTransportPosition(): string` — `'bars:beats:sixteenths'` while playing
+- `engine.getTransportStep(): number` — absolute 16th-note step from transport ticks
+  (prefer over parsing the position string; correct for non-16-step clips)
 - `engine.isStarted(): boolean`
+
+Audition API (one-shot, through the track's real chain so mute/solo/fx apply;
+call from a user gesture, chain after `ensureStarted()`):
+
+- `engine.previewNote(trackId, note, velocity?)` — single note
+- `engine.previewClip(clipId)` — whole clip once, transport-free (editor
+  audition in arrangement view)
 
 Notes for everyone:
 

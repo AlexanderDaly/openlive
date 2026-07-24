@@ -1,12 +1,13 @@
 /**
- * Polls the audio engine's transport position via requestAnimationFrame
- * and returns the current step index (0 .. lengthSteps-1) within the clip,
+ * Polls the audio engine's transport step via requestAnimationFrame and
+ * returns the current step index (0 .. lengthSteps-1) within the clip,
  * or -1 when the transport is stopped / position is unavailable.
+ * Tick-based (engine.getTransportStep), so clips with lengthSteps != 16
+ * stay aligned.
  */
 import { useEffect, useState } from 'react';
 import { engine } from '@/audio/engine';
 import { useProjectStore } from '@/store/projectStore';
-import { STEPS_PER_BAR } from '@/types/daw';
 
 export function usePlayheadStep(lengthSteps: number): number {
   const isPlaying = useProjectStore((s) => s.isPlaying);
@@ -17,15 +18,10 @@ export function usePlayheadStep(lengthSteps: number): number {
     let raf = 0;
     const tick = () => {
       try {
-        const pos = engine.getTransportPosition(); // 'bars:beats:sixteenths'
-        const parts = pos.split(':').map(Number);
-        if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
-          const [bars = 0, beats = 0, six = 0] = parts;
-          const absolute = Math.floor(bars * STEPS_PER_BAR + beats * 4 + six);
-          const len = Math.max(1, lengthSteps);
-          const s = ((absolute % len) + len) % len;
-          setStep((prev) => (prev === s ? prev : s));
-        }
+        const absolute = engine.getTransportStep();
+        const len = Math.max(1, lengthSteps);
+        const s = ((absolute % len) + len) % len;
+        setStep((prev) => (prev === s ? prev : s));
       } catch {
         /* engine not unlocked yet — keep last step */
       }

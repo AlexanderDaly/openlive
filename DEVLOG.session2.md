@@ -37,9 +37,10 @@ UI  ──calls actions──▶  zustand store  ──subscribe──▶  audio
 2. **Engine never writes the store.** It only `subscribe`s and `getState()`.
 3. **Feature UI never touches Tone.js directly.** Allowed engine API only:
    - `engine.ensureStarted()` — user gesture unlock
-   - `engine.previewNote(trackId, note, velocity?)`
+   - `engine.previewNote(trackId, note, velocity?)` — one-shot note audition
+   - `engine.previewClip(clipId)` — one-shot clip audition, transport-free (WS2 #43)
    - `engine.getTrackMeter(id)` / `engine.getMasterMeter()`
-   - `engine.getTransportPosition()` / `engine.isStarted()`
+   - `engine.getTransportPosition()` / `engine.getTransportStep()` / `engine.isStarted()`
 4. **Timing is in Transport ticks** (`"Ni"`), not seconds — BPM changes mid-play stay correct.
 5. **Contract file:** `src/features/CONTRACT.md` + types in `src/types/daw.ts`.
 

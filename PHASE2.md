@@ -144,6 +144,12 @@ Transport ticks (`"16i"`, `"@1m"`), never seconds. `STEPS_PER_BAR = 16`.
 
 ### WS1 — Audio-correctness bugs (#39, #40)
 
+> **Status (2026-07-23): COMPLETE** — landed in the session-2 feature commit.
+> Deviation from this brief: #39 was fixed by zeroing send gains under
+> effective mute in `applyTrackParams` rather than re-wiring sends
+> post-channel (same audible result, smaller diff). #40 uses a `@16n` rebuild
+> with tick-phase offset; rename/recolor no longer triggers a rebuild at all.
+
 **Files to touch:** `src/audio/engine.ts` only. (Tests for #40's timing math
 can land in a pure helper if you extract one; otherwise verify manually.)
 
@@ -328,6 +334,14 @@ WS0 test suite."
 
 ### WS3 — Project persistence (#3)
 
+> **Status (2026-07-23): COMPLETE** — landed in the session-2 feature commit.
+> Deviations from this brief: lives in `src/store/persistence.ts` (not
+> `src/lib/`) with a hand-rolled `coerceProjectFile` validator (no zod);
+> file envelope is `{ app, version, savedAt, content }`; autosave key is
+> `openlive.project.v1` with an 800 ms debounce. Round-trip / validation /
+> hydrate / debounce tests exist. Undo triggers autosave via the normal
+> subscription, as predicted.
+
 **Files to touch**
 
 - New: `src/lib/persistence.ts` (pure serialize/deserialize + schema
@@ -391,6 +405,12 @@ WS0 test suite."
 
 ### WS4 — Browser instruments → real tracks (#2)
 
+> **Status (2026-07-23): COMPLETE** — landed in the session-2 feature commit.
+> Click-to-add AND drag-and-drop (`application/x-openlive-instrument`) onto
+> the center view; shared metadata in `src/lib/instruments.ts`. Drop on an
+> existing track header (instrument reassign) was NOT implemented — new
+> tracks only.
+
 **Files to touch**
 
 - `src/components/BrowserPanel.tsx` — the instrument list (currently static
@@ -440,6 +460,11 @@ WS0 test suite."
 ---
 
 ### WS5 — Store & UX upgrades (#6, #12, #13)
+
+> **Status (2026-07-23): #6 and #12 COMPLETE** (session-2 commit; #12 is a
+> hand-rolled snapshot stack in `src/store/history.ts` — 350 ms coalescing,
+> 100-step cap — not zundo). **#13 still OPEN** — `Scene.slotByTrack` can
+> still drift; option (a) below is the recommendation.
 
 **After WS3** (undo must not fight autosave; persistence must round-trip the
 new `masterVolume`).
