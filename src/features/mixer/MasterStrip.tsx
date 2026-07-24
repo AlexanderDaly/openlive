@@ -1,11 +1,12 @@
 /**
  * MasterStrip.tsx — master channel strip at the far right of the mixer.
- * Meter comes from `engine.getMasterMeter()`. The store has no master-volume
- * action, so the fader is local/visual-only.
+ * Meter comes from `engine.getMasterMeter()`; the fader now drives the
+ * store's REAL `masterVolume` (the engine follows the store).
  */
-import { useState } from 'react';
 import { engine } from '@/audio/engine';
-import { Meter, VerticalFader, useMeterLevel } from './controls';
+import { useProjectStore } from '@/store/projectStore';
+import { Meter, VerticalFader } from './controls';
+import { useMeterLevel } from './useMeterLevel';
 
 function dbLabel(v: number): string {
   if (v <= 0.001) return '-inf';
@@ -14,8 +15,8 @@ function dbLabel(v: number): string {
 }
 
 export default function MasterStrip() {
-  // The store exposes no master volume action — visual-only fader (local state).
-  const [volume, setVolume] = useState(0.85);
+  const volume = useProjectStore((s) => s.masterVolume);
+  const setMasterVolume = useProjectStore((s) => s.setMasterVolume);
   const level = useMeterLevel(() => engine.getMasterMeter());
 
   return (
@@ -35,9 +36,9 @@ export default function MasterStrip() {
         <Meter level={level} />
         <VerticalFader
           value={volume}
-          onChange={setVolume}
-          defaultValue={0.85}
-          title="Master volume (visual only — no store action)"
+          onChange={setMasterVolume}
+          defaultValue={0.9}
+          title="Master volume — double-click to reset"
         />
       </div>
       <div className="text-center text-[8px] tabular-nums text-neutral-400">{dbLabel(volume)}</div>

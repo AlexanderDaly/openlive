@@ -5,7 +5,8 @@
 import { useProjectStore } from '@/store/projectStore';
 import { engine } from '@/audio/engine';
 import type { Track } from '@/types/daw';
-import { Meter, MiniSlider, PanKnob, VerticalFader, useMeterLevel } from './controls';
+import { Meter, MiniSlider, PanKnob, VerticalFader } from './controls';
+import { useMeterLevel } from './useMeterLevel';
 
 /** Linear 0..1 gain → dB-ish label (engine maps 0..1 to -inf..0dB). */
 function dbLabel(v: number): string {

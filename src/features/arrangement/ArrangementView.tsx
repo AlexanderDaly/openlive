@@ -50,7 +50,7 @@ export default function ArrangementView() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
-  const loopDragRef = useRef<{ anchorBar: number } | null>(null);
+  const loopDragRef = useRef<{ anchorBar: number; moved: boolean } | null>(null);
 
   /* ---------------- derived layout values ---------------- */
 
@@ -147,12 +147,12 @@ export default function ArrangementView() {
 
   const barFromRulerEvent = (e: ReactPointerEvent<HTMLDivElement>): number => {
     const rect = e.currentTarget.getBoundingClientRect();
-    return Math.max(0, Math.min(totalBars, Math.floor((e.clientX - rect.left) / pxPerBar)));
+    return Math.max(0, Math.min(totalBars - 1, Math.floor((e.clientX - rect.left) / pxPerBar)));
   };
 
   const onRulerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    loopDragRef.current = { anchorBar: barFromRulerEvent(e) };
+    loopDragRef.current = { anchorBar: barFromRulerEvent(e), moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
@@ -160,16 +160,20 @@ export default function ArrangementView() {
     const d = loopDragRef.current;
     if (!d) return;
     const cur = barFromRulerEvent(e);
+    if (cur !== d.anchorBar) d.moved = true;
+    if (!d.moved) return;
+    // Inclusive selection: the anchor bar AND the bar under the cursor are
+    // both inside the loop (dragging across bars 2→4 loops bars 2..4).
     setLoop({
       startBar: Math.min(d.anchorBar, cur),
-      lengthBars: Math.max(1, Math.abs(cur - d.anchorBar)),
+      lengthBars: Math.abs(cur - d.anchorBar) + 1,
     });
   };
 
-  const onRulerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+  const onRulerUp = () => {
     const d = loopDragRef.current;
     loopDragRef.current = null;
-    if (d && barFromRulerEvent(e) === d.anchorBar) setLoop(null); // plain click clears
+    if (d && !d.moved) setLoop(null); // plain click (no drag) clears
   };
 
   /* ---------------- render ---------------- */

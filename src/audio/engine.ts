@@ -206,6 +206,7 @@ const volumeToDb = (v: number): number =>
 
 class AudioEngine {
   private started = false;
+  private startPromise: Promise<void> | null = null;
   private unsubscribe: (() => void) | null = null;
 
   private master: Tone.Gain | null = null;
@@ -216,7 +217,6 @@ class AudioEngine {
   private playing = new Map<string, PlayingPart>();
 
   private metSynth: Tone.MembraneSynth | null = null;
-  private metronomeBeat = 0;
 
   /** Public singleton — constructor does NOT create Tone nodes. */
   constructor() {
@@ -229,19 +229,28 @@ class AudioEngine {
 
   /**
    * Call from a user gesture (e.g. the play button) before playback.
-   * Safe to call repeatedly.
+   * Safe to call repeatedly — and safe to call CONCURRENTLY: overlapping
+   * calls share one init promise, so nodes/scheduleRepeats are only ever
+   * created once (a double-init used to double-trigger every note).
    */
   async ensureStarted(): Promise<void> {
-    if (this.started) {
-      const ctx = Tone.getContext();
-      if (ctx.state !== 'running') await ctx.resume();
-      return;
+    if (!this.startPromise) {
+      this.startPromise = (async () => {
+        await Tone.start();
+        this.initNodes();
+        this.started = true;
+        this.subscribeToStore();
+        this.fullSync();
+      })();
+      // If unlock failed (no valid gesture), allow a later retry.
+      this.startPromise.catch(() => {
+        this.startPromise = null;
+        this.started = false;
+      });
     }
-    await Tone.start();
-    this.initNodes();
-    this.started = true;
-    this.subscribeToStore();
-    this.fullSync();
+    await this.startPromise;
+    const ctx = Tone.getContext();
+    if (ctx.state !== 'running') await ctx.resume();
   }
 
   /** Meter tapped off the track channel (post-fader). Undefined until ensureStarted() + track exists. */
@@ -283,7 +292,7 @@ class AudioEngine {
   }
 
   private initNodes(): void {
-    this.master = new Tone.Gain(0.9);
+    this.master = new Tone.Gain(useProjectStore.getState().masterVolume);
     this.masterMeter = new Tone.Meter({ normalRange: true, smoothing: 0.8 });
     this.limiter = new Tone.Limiter(-1);
     this.master.connect(this.masterMeter);
@@ -303,10 +312,14 @@ class AudioEngine {
     transport.swingSubdivision = '16n';
 
     // Metronome tick on every beat; reads fresh store state each tick.
+    // The beat number is derived from the transport position (not a local
+    // counter), so the accent always lands on the bar downbeat even when
+    // the metronome is toggled mid-playback or the transport loops.
     transport.scheduleRepeat((time) => {
       const s = useProjectStore.getState();
       if (!s.metronome || !s.isPlaying) return;
-      const beat = this.metronomeBeat++ % 4;
+      const t = Tone.getTransport();
+      const beat = Math.floor(t.getTicksAtTime(time) / t.PPQ) % 4;
       this.metSynth?.triggerAttackRelease(beat === 0 ? 'A5' : 'E5', 0.05, time, beat === 0 ? 0.9 : 0.5);
     }, '4n');
 
@@ -394,10 +407,14 @@ class AudioEngine {
     chain.channel.volume.value = volumeToDb(track.volume);
     chain.channel.pan.value = track.pan;
     // Ableton-style solo: if anything is soloed, all non-soloed tracks are muted.
-    chain.channel.mute = track.muted || (anySolo && !track.soloed);
+    const effectiveMute = track.muted || (anySolo && !track.soloed);
+    chain.channel.mute = effectiveMute;
     chain.filter.frequency.value = track.fx.filterFreq;
-    chain.reverbSend.gain.value = track.fx.reverb;
-    chain.delaySend.gain.value = track.fx.delay;
+    // The sends tap the chain BEFORE the channel (pre-fader), so muting the
+    // channel alone would still leak reverb/delay from a muted track. Gate
+    // the send gains with the same effective-mute flag.
+    chain.reverbSend.gain.value = effectiveMute ? 0 : track.fx.reverb;
+    chain.delaySend.gain.value = effectiveMute ? 0 : track.fx.delay;
   }
 
   private disposeChain(chain: TrackChain): void {
@@ -443,8 +460,14 @@ class AudioEngine {
     for (const trackId of [...this.playing.keys()]) this.stopPart(trackId);
   }
 
-  /** Schedule a clip to start looping at the next bar boundary. */
-  private launchPart(trackId: string, clip: Clip): void {
+  /**
+   * Schedule a clip to start looping.
+   * - `'@1m'` (default): Ableton-style bar-quantized launch.
+   * - `'@16n'`: near-immediate start at the next 16th, phase-aligned to the
+   *   transport — used when a PLAYING clip's notes are edited, so the loop
+   *   keeps running seamlessly instead of dropping out until the next bar.
+   */
+  private launchPart(trackId: string, clip: Clip, quantize: '@1m' | '@16n' = '@1m'): void {
     this.stopPart(trackId);
     const chain = this.chains.get(trackId);
     if (!chain) return;
@@ -460,9 +483,17 @@ class AudioEngine {
     const entry: PlayingPart = { clipId: clip.id, part, scheduleId: null };
     const transport = Tone.getTransport();
     entry.scheduleId = transport.scheduleOnce((time) => {
-      part.start(time);
+      if (quantize === '@16n') {
+        // Resume mid-pattern: offset the part by the transport's phase
+        // within the clip loop so edits never restart the pattern.
+        const loopTicks = Math.max(1, clip.lengthSteps * six);
+        const offset = transport.getTicksAtTime(time) % loopTicks;
+        part.start(time, `${offset}i`);
+      } else {
+        part.start(time);
+      }
       if (this.playing.get(trackId) === entry) entry.scheduleId = null;
-    }, '@1m');
+    }, quantize);
     this.playing.set(trackId, entry);
   }
 
@@ -495,6 +526,7 @@ class AudioEngine {
     const transport = Tone.getTransport();
     transport.bpm.value = state.bpm;
     transport.swing = state.swing;
+    if (this.master) this.master.gain.value = state.masterVolume;
     this.applyLoop(state);
     this.syncTracks(state);
     if (state.isPlaying) {
@@ -511,6 +543,8 @@ class AudioEngine {
 
       if (state.bpm !== prev.bpm) transport.bpm.rampTo(state.bpm, 0.1);
       if (state.swing !== prev.swing) transport.swing = state.swing;
+      if (state.masterVolume !== prev.masterVolume)
+        this.master?.gain.rampTo(state.masterVolume, 0.05);
       if (state.tracks !== prev.tracks) this.syncTracks(state);
       if (state.loop !== prev.loop) this.applyLoop(state);
 
@@ -526,7 +560,6 @@ class AudioEngine {
 
       if (state.isPlaying !== prev.isPlaying) {
         if (state.isPlaying) {
-          this.metronomeBeat = 0;
           transport.start();
           if (state.view === 'session') this.launchAllPlaying(state);
         } else {
@@ -547,8 +580,23 @@ class AudioEngine {
       if (state.view === 'session' && state.isPlaying && state.clips !== prev.clips) {
         for (const [trackId, entry] of [...this.playing]) {
           const clip = state.clips[entry.clipId];
-          if (!clip) this.stopPart(trackId);
-          else if (clip !== prev.clips[entry.clipId]) this.launchPart(trackId, clip);
+          const prevClip = prev.clips[entry.clipId];
+          if (!clip) {
+            this.stopPart(trackId);
+          } else if (clip !== prevClip) {
+            // Only rebuild when the PATTERN changed (rename/recolor keep the
+            // same notes array — no need to touch audio for those).
+            const patternChanged =
+              !prevClip || clip.notes !== prevClip.notes || clip.lengthSteps !== prevClip.lengthSteps;
+            if (patternChanged) {
+              // If the part is still waiting on its bar-quantized launch,
+              // keep that quantize; otherwise resume in phase at the next 16th.
+              const stillPending = entry.scheduleId !== null;
+              this.launchPart(trackId, clip, stillPending ? '@1m' : '@16n');
+            } else {
+              entry.clipId = clip.id; // no-op keep — nothing audible changed
+            }
+          }
         }
       }
     });

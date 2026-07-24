@@ -16,6 +16,7 @@ import type {
   Clip,
   FxParam,
   NoteEvent,
+  ProjectContent,
   ProjectState,
   Scene,
   Track,
@@ -181,25 +182,33 @@ const demoArrangement: ArrangementClip[] = [
 
 /* ------------------------------------------------------------------ */
 
-export const useProjectStore = create<ProjectState>()((set) => ({
-  // transport / meta
+const DEMO_CONTENT: ProjectContent = {
   bpm: 124,
-  isPlaying: false,
   metronome: false,
   swing: 0,
   view: 'session',
   loop: null,
-
-  // content
+  masterVolume: 0.9,
   tracks: demoTracks,
   clips: demoClips,
   sessionMatrix: demoSessionMatrix,
   scenes: demoScenes,
   arrangementClips: demoArrangement,
-
-  // playback / selection — seed Scene A so first Play has sound (README promise)
-  playingClipByTrack: slotFor(0),
   selectedClipId: null,
+};
+
+/** A fresh, unshared copy of the seeded demo project. */
+export const createDemoContent = (): ProjectContent => structuredClone(DEMO_CONTENT);
+
+/* ------------------------------------------------------------------ */
+
+export const useProjectStore = create<ProjectState>()((set) => ({
+  // content (seeded demo project)
+  ...createDemoContent(),
+
+  // runtime playback state
+  isPlaying: false,
+  playingClipByTrack: slotFor(0), // seed Scene A so first Play has sound (README promise)
 
   // ---- track actions ----
   addTrack: (init) => {
@@ -374,6 +383,13 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       return { clips: { ...s.clips, [clipId]: { ...clip, name } } };
     }),
 
+  setClipColor: (clipId, color) =>
+    set((s) => {
+      const clip = s.clips[clipId];
+      if (!clip) return s;
+      return { clips: { ...s.clips, [clipId]: { ...clip, color } } };
+    }),
+
   selectClip: (clipId) => set({ selectedClipId: clipId }),
 
   setSlot: (trackId, slotIndex, clipId) =>
@@ -529,5 +545,23 @@ export const useProjectStore = create<ProjectState>()((set) => ({
               startBar: Math.max(0, Math.floor(loop.startBar)),
               lengthBars: Math.max(1, Math.floor(loop.lengthBars)),
             },
+    }),
+
+  setMasterVolume: (volume) => set({ masterVolume: clamp(volume, 0, 1) }),
+
+  // ---- project lifecycle ----
+  loadProject: (content) =>
+    set({
+      ...content,
+      // Never resume playback into a freshly loaded project.
+      isPlaying: false,
+      playingClipByTrack: {},
+    }),
+
+  resetToDemo: () =>
+    set({
+      ...createDemoContent(),
+      isPlaying: false,
+      playingClipByTrack: {},
     }),
 }));
