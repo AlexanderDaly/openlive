@@ -34,10 +34,12 @@ const launchClip = useProjectStore((s) => s.launchClip); // actions are stable
 Types (import with `import type { ... } from '@/types/daw'`):
 `TrackType`, `InstrumentKind` ('drumkit' | 'bass' | 'keys'), `ViewMode`, `FxParam`,
 `NoteEvent` (step, note, velocity 0..1, duration? in steps), `Clip`, `ArrangementClip`,
-`TrackFx`, `Track`, `Scene`, `ProjectState`. `STEPS_PER_BAR = 16`.
+`TrackFx`, `Track`, `Scene`, `ProjectContent` (the serializable slice),
+`ProjectState`. `STEPS_PER_BAR = 16`.
 
 State: `bpm`, `isPlaying`, `metronome`, `swing` (0..0.6), `view` ('session' | 'arrangement'),
 `loop: { startBar, lengthBars } | null` (arrangement transport loop),
+`masterVolume` (0..1, master output gain),
 `tracks: Track[]`, `clips: Record<string, Clip>` (clip pool),
 `sessionMatrix: Record<trackId, (clipId | null)[]>`, `scenes: Scene[]`,
 `arrangementClips: ArrangementClip[]`,
@@ -46,9 +48,13 @@ State: `bpm`, `isPlaying`, `metronome`, `swing` (0..0.6), `view` ('session' | 'a
 
 Actions:
 - Tracks: `addTrack(init?) → id`, `removeTrack`, `renameTrack`, `setVolume` (0..1),
-  `setPan` (-1..1), `toggleMute`, `toggleSolo`, `setFxParam(trackId, 'reverb'|'delay'|'filterFreq', v)`
+  `setPan` (-1..1), `toggleMute`, `toggleSolo`, `setFxParam(trackId, 'reverb'|'delay'|'filterFreq', v)`,
+  `setTrackFx(trackId, partial)` — patch any `TrackFx` field (device power
+  `reverbOn`/`delayOn`/`filterOn`, macros `reverbDecay`/`delayTime`/`delayFeedback`/`filterReso`,
+  all 0..1 except `filterFreq` 20..18000; engine maps macros to decay seconds,
+  delay seconds, and filter Q; bypass = send gated to 0 / filter opened)
 - Clips: `createClip(trackId, slotIndex?, init?) → id`, `deleteClip`, `updateClipNotes`,
-  `renameClip`, `selectClip`, `setSlot(trackId, slotIndex, clipId | null)`
+  `renameClip`, `setClipColor`, `selectClip`, `setSlot(trackId, slotIndex, clipId | null)`
 - Launching: `launchClip(trackId, clipId)` (quantized to next bar by the engine,
   replaces the track's current clip), `stopTrackClip`,
   `launchScene(sceneIndex)` (reads **session matrix row** — null slots stop that track),
@@ -56,10 +62,19 @@ Actions:
 - Arrangement: `addToArrangement(clipId, trackId, startBar, lengthBars) → id`,
   `moveArrangementClip(id, startBar, trackId?)`, `resizeArrangementClip`, `removeArrangementClip`
 - Transport: `setBpm`, `setSwing`, `togglePlay`, `toggleMetronome`, `setView`,
-  `setLoop({ startBar, lengthBars } | null)` (engine applies only in arrangement view)
+  `setLoop({ startBar, lengthBars } | null)` (engine applies only in arrangement view),
+  `setMasterVolume` (0..1)
+- Project lifecycle: `loadProject(content: ProjectContent)` (replace everything,
+  stops playback), `resetToDemo()` — normally driven by the foundation's
+  TransportBar / persistence module, not by feature folders.
+
+Foundation-owned store modules (do NOT reimplement in features):
+`@/store/persistence` (project JSON + localStorage autosave) and
+`@/store/history` (undo/redo). Both subscribe to the store like the engine.
 
 Before playback the audio context must be unlocked from a user gesture:
-`await engine.ensureStarted()` (TransportBar already does this on play).
+`await engine.ensureStarted()` (TransportBar already does this on play; the
+SessionView launch buttons chain it and then start the transport if stopped).
 
 ## Engine — `@/audio/engine`
 
@@ -75,7 +90,16 @@ Read-only API you may use:
   read with `meter.getValue()` inside `requestAnimationFrame`. Undefined until first `ensureStarted()`.
 - `engine.getMasterMeter(): Tone.Meter | undefined`
 - `engine.getTransportPosition(): string` — `'bars:beats:sixteenths'` while playing
+- `engine.getTransportStep(): number` — absolute 16th-note step from transport ticks
+  (prefer over parsing the position string; correct for non-16-step clips)
 - `engine.isStarted(): boolean`
+
+Audition API (one-shot, through the track's real chain so mute/solo/fx apply;
+call from a user gesture, chain after `ensureStarted()`):
+
+- `engine.previewNote(trackId, note, velocity?)` — single note
+- `engine.previewClip(clipId)` — whole clip once, transport-free (editor
+  audition in arrangement view)
 
 Notes for everyone:
 

@@ -2,10 +2,11 @@
  * ClipEditor — bottom-panel clip detail view.
  * Step sequencer (drums) / mini piano-roll (melodic) for the clip
  * referenced by the store's `selectedClipId`. All pattern writes go
- * through `updateClipNotes`; naming through `renameClip`; audition via
- * `launchClip` / `stopTrackClip` (the engine syncs from the store).
- * Clip color has no contract action, so a local store-level workaround
- * (`./clipColor`) patches it through zustand's public setState.
+ * through `updateClipNotes`; naming through `renameClip`; recolor through
+ * `setClipColor` (`./clipColor` is a thin delegate).
+ * Header ▶ semantics: session view = launch/stop (resume when the
+ * transport is stopped); arrangement view = one-shot audition via
+ * `engine.previewClip` (never starts the timeline).
  */
 import { useState } from 'react';
 import { engine } from '@/audio/engine';
@@ -33,10 +34,12 @@ export default function ClipEditor() {
     const c = s.selectedClipId ? s.clips[s.selectedClipId] : undefined;
     return c ? s.tracks.find((t) => t.id === c.trackId) : undefined;
   });
-  const isClipPlaying = useProjectStore((s) => {
+  const isClipLaunched = useProjectStore((s) => {
     const c = s.selectedClipId ? s.clips[s.selectedClipId] : undefined;
     return c ? s.playingClipByTrack[c.trackId] === c.id : false;
   });
+  const isPlaying = useProjectStore((s) => s.isPlaying);
+  const view = useProjectStore((s) => s.view);
   const renameClip = useProjectStore((s) => s.renameClip);
   const launchClip = useProjectStore((s) => s.launchClip);
   const stopTrackClip = useProjectStore((s) => s.stopTrackClip);
@@ -80,9 +83,36 @@ export default function ClipEditor() {
     setDraftName(null);
   };
 
+  // Audible right now = launched AND transport running. A launched clip
+  // with a stopped transport shows "Play" (pressing it resumes playback).
+  const isClipPlaying = view === 'session' && isPlaying && isClipLaunched;
+
   const onAudition = () => {
-    if (isClipPlaying) {
-      stopTrackClip(clip.trackId);
+    if (view === 'arrangement') {
+      // Audition the clip one-shot through its track chain — never start
+      // the arrangement timeline from the editor.
+      void engine
+        .ensureStarted()
+        .then(() => engine.previewClip(clip.id))
+        .catch(() => {
+          /* audio unlock failed — stay silent */
+        });
+      return;
+    }
+    if (isClipLaunched) {
+      if (isPlaying) {
+        stopTrackClip(clip.trackId);
+        return;
+      }
+      // Launched but transport stopped: resume playback (engine relaunches).
+      void engine
+        .ensureStarted()
+        .then(() => {
+          if (!useProjectStore.getState().isPlaying) togglePlay();
+        })
+        .catch(() => {
+          /* audio unlock failed — stay silent */
+        });
       return;
     }
     void engine
@@ -165,7 +195,7 @@ export default function ClipEditor() {
       {isDrums ? (
         <DrumGrid clip={clip} playheadStep={playheadStep} />
       ) : (
-        <MelodicGrid clip={clip} track={track} playheadStep={playheadStep} />
+        <MelodicGrid key={clip.id} clip={clip} track={track} playheadStep={playheadStep} />
       )}
     </div>
   );

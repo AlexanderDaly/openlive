@@ -11,14 +11,17 @@
  * This file is part of the fixed contract — feature agents must not edit it.
  */
 import { create } from 'zustand';
+import { DEFAULT_TRACK_FX } from '@/types/daw';
 import type {
   ArrangementClip,
   Clip,
   FxParam,
   NoteEvent,
+  ProjectContent,
   ProjectState,
   Scene,
   Track,
+  TrackFx,
   ViewMode,
 } from '@/types/daw';
 
@@ -45,22 +48,22 @@ const demoTracks: Track[] = [
   {
     id: TRACK_IDS.drums, name: 'Drums', type: 'drums', color: '#e05c5c',
     volume: 0.9, pan: 0, muted: false, soloed: false, instrument: 'drumkit',
-    fx: { reverb: 0.15, delay: 0, filterFreq: 18000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.15 },
   },
   {
     id: TRACK_IDS.bass, name: 'Bass', type: 'midi', color: '#e0a43c',
     volume: 0.8, pan: 0, muted: false, soloed: false, instrument: 'bass',
-    fx: { reverb: 0.05, delay: 0, filterFreq: 12000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.05, filterFreq: 12000 },
   },
   {
     id: TRACK_IDS.keys, name: 'Keys', type: 'midi', color: '#5cb56a',
     volume: 0.75, pan: -0.1, muted: false, soloed: false, instrument: 'keys',
-    fx: { reverb: 0.35, delay: 0.25, filterFreq: 18000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.35, delay: 0.25 },
   },
   {
     id: TRACK_IDS.lead, name: 'Lead', type: 'midi', color: '#b06fc9',
     volume: 0.7, pan: 0.15, muted: false, soloed: false, instrument: 'keys',
-    fx: { reverb: 0.3, delay: 0.4, filterFreq: 16000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.3, delay: 0.4, filterFreq: 16000 },
   },
 ];
 
@@ -181,25 +184,33 @@ const demoArrangement: ArrangementClip[] = [
 
 /* ------------------------------------------------------------------ */
 
-export const useProjectStore = create<ProjectState>()((set) => ({
-  // transport / meta
+const DEMO_CONTENT: ProjectContent = {
   bpm: 124,
-  isPlaying: false,
   metronome: false,
   swing: 0,
   view: 'session',
   loop: null,
-
-  // content
+  masterVolume: 0.9,
   tracks: demoTracks,
   clips: demoClips,
   sessionMatrix: demoSessionMatrix,
   scenes: demoScenes,
   arrangementClips: demoArrangement,
-
-  // playback / selection — seed Scene A so first Play has sound (README promise)
-  playingClipByTrack: slotFor(0),
   selectedClipId: null,
+};
+
+/** A fresh, unshared copy of the seeded demo project. */
+export const createDemoContent = (): ProjectContent => structuredClone(DEMO_CONTENT);
+
+/* ------------------------------------------------------------------ */
+
+export const useProjectStore = create<ProjectState>()((set) => ({
+  // content (seeded demo project)
+  ...createDemoContent(),
+
+  // runtime playback state
+  isPlaying: false,
+  playingClipByTrack: slotFor(0), // seed Scene A so first Play has sound (README promise)
 
   // ---- track actions ----
   addTrack: (init) => {
@@ -217,7 +228,7 @@ export const useProjectStore = create<ProjectState>()((set) => ({
           muted: init?.muted ?? false,
           soloed: init?.soloed ?? false,
           instrument: init?.instrument ?? 'keys',
-          fx: init?.fx ?? { reverb: 0.2, delay: 0, filterFreq: 18000 },
+          fx: init?.fx ?? { ...DEFAULT_TRACK_FX },
         },
       ],
       sessionMatrix: { ...s.sessionMatrix, [id]: Array(8).fill(null) },
@@ -299,6 +310,25 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       ),
     })),
 
+  setTrackFx: (trackId, partial: Partial<TrackFx>) =>
+    set((s) => ({
+      tracks: s.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const fx: TrackFx = { ...t.fx };
+        if (partial.reverb !== undefined) fx.reverb = clamp(partial.reverb, 0, 1);
+        if (partial.delay !== undefined) fx.delay = clamp(partial.delay, 0, 1);
+        if (partial.filterFreq !== undefined) fx.filterFreq = clamp(partial.filterFreq, 20, 18000);
+        if (partial.reverbOn !== undefined) fx.reverbOn = partial.reverbOn;
+        if (partial.delayOn !== undefined) fx.delayOn = partial.delayOn;
+        if (partial.filterOn !== undefined) fx.filterOn = partial.filterOn;
+        if (partial.reverbDecay !== undefined) fx.reverbDecay = clamp(partial.reverbDecay, 0, 1);
+        if (partial.delayTime !== undefined) fx.delayTime = clamp(partial.delayTime, 0, 1);
+        if (partial.delayFeedback !== undefined) fx.delayFeedback = clamp(partial.delayFeedback, 0, 1);
+        if (partial.filterReso !== undefined) fx.filterReso = clamp(partial.filterReso, 0, 1);
+        return { ...t, fx };
+      }),
+    })),
+
   // ---- clip actions ----
   createClip: (trackId, slotIndex, init) => {
     const id = uid();
@@ -372,6 +402,13 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       const clip = s.clips[clipId];
       if (!clip) return s;
       return { clips: { ...s.clips, [clipId]: { ...clip, name } } };
+    }),
+
+  setClipColor: (clipId, color) =>
+    set((s) => {
+      const clip = s.clips[clipId];
+      if (!clip) return s;
+      return { clips: { ...s.clips, [clipId]: { ...clip, color } } };
     }),
 
   selectClip: (clipId) => set({ selectedClipId: clipId }),
@@ -529,5 +566,23 @@ export const useProjectStore = create<ProjectState>()((set) => ({
               startBar: Math.max(0, Math.floor(loop.startBar)),
               lengthBars: Math.max(1, Math.floor(loop.lengthBars)),
             },
+    }),
+
+  setMasterVolume: (volume) => set({ masterVolume: clamp(volume, 0, 1) }),
+
+  // ---- project lifecycle ----
+  loadProject: (content) =>
+    set({
+      ...content,
+      // Never resume playback into a freshly loaded project.
+      isPlaying: false,
+      playingClipByTrack: {},
+    }),
+
+  resetToDemo: () =>
+    set({
+      ...createDemoContent(),
+      isPlaying: false,
+      playingClipByTrack: {},
     }),
 }));

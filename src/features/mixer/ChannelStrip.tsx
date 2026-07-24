@@ -2,10 +2,13 @@
  * ChannelStrip.tsx — one vertical mixer channel strip per track.
  * Reads/writes the project store; meters read from the audio engine (read-only).
  */
+import { useState } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import { engine } from '@/audio/engine';
 import type { Track } from '@/types/daw';
-import { Meter, MiniSlider, PanKnob, VerticalFader, useMeterLevel } from './controls';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { Meter, MiniSlider, PanKnob, VerticalFader } from './controls';
+import { useMeterLevel } from './useMeterLevel';
 
 /** Linear 0..1 gain → dB-ish label (engine maps 0..1 to -inf..0dB). */
 function dbLabel(v: number): string {
@@ -30,6 +33,7 @@ export default function ChannelStrip({ track }: { track: Track }) {
   const toggleSolo = useProjectStore((s) => s.toggleSolo);
   const setFxParam = useProjectStore((s) => s.setFxParam);
   const removeTrack = useProjectStore((s) => s.removeTrack);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const level = useMeterLevel(() => engine.getTrackMeter(track.id));
 
@@ -49,12 +53,20 @@ export default function ChannelStrip({ track }: { track: Track }) {
         </span>
         <button
           type="button"
-          onClick={() => removeTrack(track.id)}
+          onClick={() => setConfirmRemove(true)}
           title={`Remove ${track.name}`}
           className="absolute -right-0.5 -top-0.5 hidden h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[#2b2b2b] text-[9px] leading-none text-neutral-400 hover:bg-[#e0483c] hover:text-black group-hover:flex"
         >
           ×
         </button>
+        <ConfirmDialog
+          open={confirmRemove}
+          onOpenChange={setConfirmRemove}
+          title="Remove track"
+          description={`Remove track “${track.name}” and all its clips? You can undo with Ctrl/Cmd+Z.`}
+          confirmLabel="Remove"
+          onConfirm={() => removeTrack(track.id)}
+        />
       </div>
 
       {/* M / S */}

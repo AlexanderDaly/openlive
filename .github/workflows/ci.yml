@@ -29,6 +29,5 @@ jobs:
       - name: Typecheck + production build
         run: npm run build
 
-      - name: ESLint (non-blocking until UI template clean)
+      - name: ESLint
         run: npm run lint
-        continue-on-error: true

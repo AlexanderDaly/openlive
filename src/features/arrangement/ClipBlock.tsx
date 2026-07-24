@@ -6,7 +6,7 @@
  *  - click                -> select underlying pool clip (store.selectClip)
  *  - drag body horizontally -> moveArrangementClip (bar-snapped, live preview)
  *  - drag right edge        -> resizeArrangementClip (min 1 bar)
- *  - double-click / ×       -> removeArrangementClip
+ *  - double-click / ×       -> onRequestRemove (confirm dialog in ArrangementView)
  */
 import { useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
@@ -30,6 +30,7 @@ interface Props {
   pxPerBar: number;
   selected: boolean;
   onSelect: (arrangementClipId: string) => void;
+  onRequestRemove: (arrangementClipId: string) => void;
 }
 
 /** Append an alpha byte to a '#rrggbb' color. */
@@ -37,10 +38,9 @@ function withAlpha(hex: string, alpha: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex + alpha : hex;
 }
 
-export function ClipBlock({ ac, clip, pxPerBar, selected, onSelect }: Props) {
+export function ClipBlock({ ac, clip, pxPerBar, selected, onSelect, onRequestRemove }: Props) {
   const moveArrangementClip = useProjectStore((s) => s.moveArrangementClip);
   const resizeArrangementClip = useProjectStore((s) => s.resizeArrangementClip);
-  const removeArrangementClip = useProjectStore((s) => s.removeArrangementClip);
   const selectClip = useProjectStore((s) => s.selectClip);
 
   const dragRef = useRef<DragState | null>(null);
@@ -116,7 +116,7 @@ export function ClipBlock({ ac, clip, pxPerBar, selected, onSelect }: Props) {
       onPointerUp={endDrag}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        removeArrangementClip(ac.id);
+        onRequestRemove(ac.id);
       }}
     >
       {/* header strip */}
@@ -142,7 +142,7 @@ export function ClipBlock({ ac, clip, pxPerBar, selected, onSelect }: Props) {
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
-          removeArrangementClip(ac.id);
+          onRequestRemove(ac.id);
         }}
       >
         ×

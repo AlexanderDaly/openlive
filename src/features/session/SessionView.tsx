@@ -9,18 +9,15 @@
  * Store reads : tracks, clips, sessionMatrix, scenes, playingClipByTrack,
  *               selectedClipId.
  * Store writes: createClip, deleteClip, renameClip, selectClip, setSlot,
- *               launchClip, stopTrackClip, launchScene, stopAllClips.
- *
- * Workaround note: the fixed store has no scene add/rename action, so
- * extra scene rows are created by extending the session matrix via
- * `setSlot(trackId, rowCount, null)`, and scene display-name edits are
- * kept as local UI overrides on top of the store's `scenes` names.
+ *               launchClip, stopTrackClip, addScene, renameScene, launchScene,
+ *               stopAllClips.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Drum, Music, Piano, Play, Plus, Square, Waves, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { engine } from '@/audio/engine';
 import { useProjectStore } from '@/store/projectStore';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import type { Clip, InstrumentKind, Track } from '@/types/daw';
 
 /** Minimum visible scene rows (Ableton-style empty rows below content). */
@@ -236,9 +233,11 @@ export default function SessionView() {
   const addScene = useProjectStore((s) => s.addScene);
   const renameScene = useProjectStore((s) => s.renameScene);
   const isTransportPlaying = useProjectStore((s) => s.isPlaying);
+  const togglePlay = useProjectStore((s) => s.togglePlay);
 
   // ---- local UI state ----
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
+  const [confirmDeleteClip, setConfirmDeleteClip] = useState<{ id: string; name: string } | null>(null);
   const [sceneRename, setSceneRename] = useState<{ index: number; value: string } | null>(null);
 
   const rowCount = Math.max(
@@ -251,6 +250,21 @@ export default function SessionView() {
   /** Unlock the audio context from a user gesture (safe to repeat). */
   const unlock = () => {
     void engine.ensureStarted().catch(() => {});
+  };
+
+  /**
+   * Ableton behavior: launching a clip/scene IS a play command. Unlock
+   * audio from this gesture, run the launch, then make sure the transport
+   * is rolling (launches stay bar-quantized inside the engine).
+   */
+  const launchAndRoll = (launch: () => void) => {
+    void engine
+      .ensureStarted()
+      .then(() => {
+        launch();
+        if (!useProjectStore.getState().isPlaying) togglePlay();
+      })
+      .catch(() => {});
   };
 
   const commitClipRename = () => {
@@ -327,12 +341,15 @@ export default function SessionView() {
                     isRenaming={clipRename?.id === clip.id}
                     renameValue={clipRename?.id === clip.id ? clipRename.value : clip.name}
                     onLaunch={() => {
-                      unlock();
-                      if (isPlaying) stopTrackClip(track.id);
-                      else launchClip(track.id, clip.id);
+                      if (isPlaying) {
+                        unlock();
+                        stopTrackClip(track.id);
+                      } else {
+                        launchAndRoll(() => launchClip(track.id, clip.id));
+                      }
                     }}
                     onSelect={() => selectClip(clip.id)}
-                    onDelete={() => deleteClip(clip.id)}
+                    onDelete={() => setConfirmDeleteClip({ id: clip.id, name: clip.name })}
                     onStartRename={() => setClipRename({ id: clip.id, value: clip.name })}
                     onRenameChange={(value) => setClipRename({ id: clip.id, value })}
                     onCommitRename={commitClipRename}
@@ -381,10 +398,7 @@ export default function SessionView() {
                 className="flex h-14 items-center gap-1.5 border-b border-[#262626] px-2"
               >
                 <button
-                  onClick={() => {
-                    unlock();
-                    launchScene(rowIndex);
-                  }}
+                  onClick={() => launchAndRoll(() => launchScene(rowIndex))}
                   title={`Launch scene "${sceneName}"`}
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[3px] border border-[#3a3a3a] bg-[#242424] text-[#ff8c2e] hover:border-[#ff8c2e] hover:bg-[#2b2b2b]"
                 >
@@ -448,6 +462,18 @@ export default function SessionView() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteClip !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteClip(null);
+        }}
+        title="Delete clip"
+        description={`Delete clip “${confirmDeleteClip?.name ?? ''}”? You can undo with Ctrl/Cmd+Z.`}
+        onConfirm={() => {
+          if (confirmDeleteClip) deleteClip(confirmDeleteClip.id);
+        }}
+      />
     </div>
   );
 }

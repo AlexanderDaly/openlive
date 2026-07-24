@@ -63,7 +63,33 @@ export interface TrackFx {
   delay: number;
   /** Low-pass filter cutoff in Hz (20 .. 18000). Default 18000 = open. */
   filterFreq: number;
+  /** Device power: false = bypassed (send gated / filter opened). */
+  reverbOn: boolean;
+  delayOn: boolean;
+  filterOn: boolean;
+  /** Reverb tail 0 .. 1 (engine maps to decay seconds). */
+  reverbDecay: number;
+  /** Delay time 0 .. 1 (engine maps to seconds). */
+  delayTime: number;
+  /** Delay feedback 0 .. 1. */
+  delayFeedback: number;
+  /** Filter resonance 0 .. 1 (engine maps to Q). */
+  filterReso: number;
 }
+
+/** Defaults for a new/loaded track's FX chain (FxRack shows these). */
+export const DEFAULT_TRACK_FX: TrackFx = {
+  reverb: 0.2,
+  delay: 0,
+  filterFreq: 18000,
+  reverbOn: true,
+  delayOn: true,
+  filterOn: true,
+  reverbDecay: 0.5,
+  delayTime: 0.4,
+  delayFeedback: 0.35,
+  filterReso: 0.3,
+};
 
 export interface Track {
   id: string;
@@ -90,16 +116,13 @@ export interface Scene {
 }
 
 /**
- * Full project state. Shape of the zustand store in
- * `@/store/projectStore` (`useProjectStore`).
- *
- * Actions are plain functions on the same store:
- * `const setBpm = useProjectStore((s) => s.setBpm)`.
+ * The SERIALIZABLE core of a project — everything that belongs in a saved
+ * file / localStorage / the undo history. Runtime playback state
+ * (`isPlaying`, `playingClipByTrack`) deliberately lives outside of this.
  */
-export interface ProjectState {
+export interface ProjectContent {
   // ---- transport / meta ----
   bpm: number;
-  isPlaying: boolean;
   metronome: boolean;
   /** 0 .. 0.6, applied to the 16n grid. */
   swing: number;
@@ -109,6 +132,8 @@ export interface ProjectState {
    * `lengthBars` is always >= 1 when set. Engine maps this onto Tone.Transport.
    */
   loop: { startBar: number; lengthBars: number } | null;
+  /** Master output gain 0 .. 1 (linear, engine master Gain node). */
+  masterVolume: number;
 
   // ---- content ----
   tracks: Track[];
@@ -122,10 +147,22 @@ export interface ProjectState {
   scenes: Scene[];
   arrangementClips: ArrangementClip[];
 
-  // ---- playback / selection ----
+  // ---- selection ----
+  selectedClipId: string | null;
+}
+
+/**
+ * Full project state. Shape of the zustand store in
+ * `@/store/projectStore` (`useProjectStore`).
+ *
+ * Actions are plain functions on the same store:
+ * `const setBpm = useProjectStore((s) => s.setBpm)`.
+ */
+export interface ProjectState extends ProjectContent {
+  // ---- runtime playback state (never serialized) ----
+  isPlaying: boolean;
   /** Ableton rule: at most ONE playing clip per track. */
   playingClipByTrack: Record<string, string | null>;
-  selectedClipId: string | null;
 
   // ---- track actions ----
   addTrack: (init?: Partial<Omit<Track, 'id'>>) => string;
@@ -136,6 +173,8 @@ export interface ProjectState {
   toggleMute: (trackId: string) => void;
   toggleSolo: (trackId: string) => void;
   setFxParam: (trackId: string, param: FxParam, value: number) => void;
+  /** Patch any TrackFx field (device power + macros), with the same clamp discipline as setFxParam. */
+  setTrackFx: (trackId: string, partial: Partial<TrackFx>) => void;
 
   // ---- clip actions ----
   /** Creates a clip in the pool and (optionally) drops it into a session slot. */
@@ -143,6 +182,7 @@ export interface ProjectState {
   deleteClip: (clipId: string) => void;
   updateClipNotes: (clipId: string, notes: NoteEvent[]) => void;
   renameClip: (clipId: string, name: string) => void;
+  setClipColor: (clipId: string, color: string) => void;
   selectClip: (clipId: string | null) => void;
   /** Write (or clear with null) a session slot directly. */
   setSlot: (trackId: string, slotIndex: number, clipId: string | null) => void;
@@ -171,4 +211,15 @@ export interface ProjectState {
   setView: (view: ViewMode) => void;
   /** Set or clear the arrangement loop region (whole bars). */
   setLoop: (loop: { startBar: number; lengthBars: number } | null) => void;
+  /** Master output gain 0 .. 1. */
+  setMasterVolume: (volume: number) => void;
+
+  // ---- project lifecycle ----
+  /**
+   * Replace the whole project content (open / import / undo-restore).
+   * Playback stops; runtime state resets. The engine follows automatically.
+   */
+  loadProject: (content: ProjectContent) => void;
+  /** Restore the seeded demo project. */
+  resetToDemo: () => void;
 }
