@@ -225,6 +225,18 @@ identity, or renaming will still restart the pattern.
 
 ### WS2 — Editor/UX bug batch (#42–#48)
 
+> **Status (2026-07-23): COMPLETE** — three commits. Editor cluster
+> (#42/#43/#44/#46): editor ▶ derives from `isPlaying && launched`,
+> arrangement view auditions via new `engine.previewClip`, piano-roll
+> octave resets via `key={clip.id}`, playhead/pad step is tick-derived via
+> new `engine.getTransportStep`. Arrangement+deletes (#45/#47): loop drag
+> uses a 4 px click/drag threshold (1-bar loops work), and all destructive
+> deletes route through a shared `ConfirmDialog` (copy mentions undo, which
+> #12 provides). Devices (#48): `TrackFx` gained power + macro fields
+> (`DEFAULT_TRACK_FX` in `daw.ts`), `setTrackFx` action, engine mappings —
+> reverb decay guarded against IR-regen storms; persistence back-fills old
+> files. Regression tests: 43 total.
+
 Seven small P2 bugs. One branch, one PR per 2–3 related fixes is fine (see §4).
 
 **Files to touch**
