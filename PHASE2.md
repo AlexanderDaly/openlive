@@ -67,6 +67,11 @@ Transport ticks (`"16i"`, `"@1m"`), never seconds. `STEPS_PER_BAR = 16`.
 
 ### WS0 — Test foundation & tooling gate (#4, #11, #5, #50)
 
+> **Status (2026-07-23): COMPLETE.** Vitest + 41 tests (#4) and lint override
+> with blocking CI (#11) landed; `test.yml` skip removed; `npm audit` clean
+> (#5); package metadata + favicon + SessionView comment fixed (#50). The
+> brief below is kept for reference.
+
 **Files to touch**
 
 - `package.json` — add `"test": "vitest run"` (+ `"test:watch": "vitest"` if

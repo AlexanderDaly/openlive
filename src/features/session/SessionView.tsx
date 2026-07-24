@@ -9,12 +9,8 @@
  * Store reads : tracks, clips, sessionMatrix, scenes, playingClipByTrack,
  *               selectedClipId.
  * Store writes: createClip, deleteClip, renameClip, selectClip, setSlot,
- *               launchClip, stopTrackClip, launchScene, stopAllClips.
- *
- * Workaround note: the fixed store has no scene add/rename action, so
- * extra scene rows are created by extending the session matrix via
- * `setSlot(trackId, rowCount, null)`, and scene display-name edits are
- * kept as local UI overrides on top of the store's `scenes` names.
+ *               launchClip, stopTrackClip, addScene, renameScene, launchScene,
+ *               stopAllClips.
  */
 import { useEffect, useRef, useState } from 'react';
 import { Drum, Music, Piano, Play, Plus, Square, Waves, X } from 'lucide-react';

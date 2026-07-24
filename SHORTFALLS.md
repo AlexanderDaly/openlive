@@ -44,27 +44,6 @@ Projects live only in memory. Refresh loses all edits. Roadmap item from README.
 
 **Priority:** P1 · **Area:** store · **Source:** README roadmap
 
-<!-- issue: no-automated-tests #4 -->
-### No automated test suite
-`package.json` has no `test` script. Regressions rely on manual QA + `npm run build`.
-
-**Acceptance**
-- [ ] Vitest (or similar) wired in CI
-- [ ] Store action unit tests (launchScene, deleteClip cascade, setLoop)
-- [ ] `noteUtils` / `patchClipNotes` pure tests
-
-**Priority:** P1 · **Area:** tooling · **Source:** code review 2026-07-23
-
-<!-- issue: npm-audit-highs #5 -->
-### npm audit reports high severity dev-tooling vulns
-Vite / Rollup / PostCSS advisories (mostly dev-server). Run `npm audit fix` and bump.
-
-**Acceptance**
-- [ ] `npm audit` clean or only accepted residual risks documented
-- [ ] Dependabot PRs reviewed for vite major
-
-**Priority:** P2 · **Area:** tooling / security · **Source:** npm audit 2026-07-23
-
 <!-- issue: master-volume-missing #6 -->
 ### No master volume control in the store
 Engine master gain is fixed at `0.9`. Master strip is meter-only.
@@ -115,17 +94,6 @@ Everything is pure synth. Users cannot import/record audio.
 - [ ] Sample drum kit path or audio track MVP
 
 **Priority:** P3 · **Area:** engine · **Source:** README roadmap
-
-<!-- issue: eslint-ui-template-noise #11 -->
-### ESLint fails on shadcn ui template exports
-`components/ui/*` trips `react-refresh/only-export-components` and sidebar purity rules.
-CI currently continues-on-error for lint.
-
-**Acceptance**
-- [ ] ESLint override for `src/components/ui/**` or fix exports
-- [ ] `npm run lint` clean; CI lint job blocking
-
-**Priority:** P2 · **Area:** tooling · **Source:** eslint run
 
 <!-- issue: undo-redo #12 -->
 ### No undo / redo

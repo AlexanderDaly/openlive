@@ -1,7 +1,13 @@
 {
   "name": "openlive",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Free, open-source, browser-based DAW inspired by Ableton Live — Session/Arrangement views, mixer, synth instruments, Tone.js.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDaly/openlive.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
