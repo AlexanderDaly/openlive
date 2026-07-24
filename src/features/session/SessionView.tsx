@@ -17,6 +17,7 @@ import { Drum, Music, Piano, Play, Plus, Square, Waves, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { engine } from '@/audio/engine';
 import { useProjectStore } from '@/store/projectStore';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import type { Clip, InstrumentKind, Track } from '@/types/daw';
 
 /** Minimum visible scene rows (Ableton-style empty rows below content). */
@@ -236,6 +237,7 @@ export default function SessionView() {
 
   // ---- local UI state ----
   const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
+  const [confirmDeleteClip, setConfirmDeleteClip] = useState<{ id: string; name: string } | null>(null);
   const [sceneRename, setSceneRename] = useState<{ index: number; value: string } | null>(null);
 
   const rowCount = Math.max(
@@ -347,7 +349,7 @@ export default function SessionView() {
                       }
                     }}
                     onSelect={() => selectClip(clip.id)}
-                    onDelete={() => deleteClip(clip.id)}
+                    onDelete={() => setConfirmDeleteClip({ id: clip.id, name: clip.name })}
                     onStartRename={() => setClipRename({ id: clip.id, value: clip.name })}
                     onRenameChange={(value) => setClipRename({ id: clip.id, value })}
                     onCommitRename={commitClipRename}
@@ -460,6 +462,18 @@ export default function SessionView() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteClip !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteClip(null);
+        }}
+        title="Delete clip"
+        description={`Delete clip “${confirmDeleteClip?.name ?? ''}”? You can undo with Ctrl/Cmd+Z.`}
+        onConfirm={() => {
+          if (confirmDeleteClip) deleteClip(confirmDeleteClip.id);
+        }}
+      />
     </div>
   );
 }

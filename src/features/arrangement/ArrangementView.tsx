@@ -15,6 +15,7 @@ import { STEPS_PER_BAR } from '@/types/daw';
 import { useProjectStore } from '@/store/projectStore';
 import { engine } from '@/audio/engine';
 import { ClipBlock } from './ClipBlock';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const GUTTER_W = 160;
 const RULER_H = 24;
@@ -47,10 +48,11 @@ export default function ArrangementView() {
 
   const [pxPerBar, setPxPerBar] = useState(64);
   const [selectedArrId, setSelectedArrId] = useState<string | null>(null);
+  const [confirmRemoveArrId, setConfirmRemoveArrId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
-  const loopDragRef = useRef<{ anchorBar: number; moved: boolean } | null>(null);
+  const loopDragRef = useRef<{ anchorBar: number; downX: number; moved: boolean } | null>(null);
 
   /* ---------------- derived layout values ---------------- */
 
@@ -121,12 +123,11 @@ export default function ArrangementView() {
       if (!selectedArrId) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      removeArrangementClip(selectedArrId);
-      setSelectedArrId(null);
+      setConfirmRemoveArrId(selectedArrId);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedArrId, removeArrangementClip]);
+  }, [selectedArrId]);
 
   /* ---------------- actions ---------------- */
 
@@ -152,7 +153,7 @@ export default function ArrangementView() {
 
   const onRulerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    loopDragRef.current = { anchorBar: barFromRulerEvent(e), moved: false };
+    loopDragRef.current = { anchorBar: barFromRulerEvent(e), downX: e.clientX, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
@@ -160,7 +161,10 @@ export default function ArrangementView() {
     const d = loopDragRef.current;
     if (!d) return;
     const cur = barFromRulerEvent(e);
-    if (cur !== d.anchorBar) d.moved = true;
+    // Click vs drag is decided by PIXELS, not bar equality — otherwise a
+    // drag inside a single bar reads as a click and a 1-bar loop is
+    // impossible to create.
+    if (!d.moved && (cur !== d.anchorBar || Math.abs(e.clientX - d.downX) >= 4)) d.moved = true;
     if (!d.moved) return;
     // Inclusive selection: the anchor bar AND the bar under the cursor are
     // both inside the loop (dragging across bars 2→4 loops bars 2..4).
@@ -329,6 +333,7 @@ export default function ArrangementView() {
                           pxPerBar={pxPerBar}
                           selected={selectedArrId === ac.id}
                           onSelect={setSelectedArrId}
+                          onRequestRemove={setConfirmRemoveArrId}
                         />
                       );
                     })}
@@ -357,6 +362,23 @@ export default function ArrangementView() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmRemoveArrId !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRemoveArrId(null);
+        }}
+        title="Remove arrangement clip"
+        description={`Remove “${
+          clips[arrangementClips.find((a) => a.id === confirmRemoveArrId)?.clipId ?? '']?.name ??
+          'clip'
+        }” from the timeline? You can undo with Ctrl/Cmd+Z.`}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirmRemoveArrId) removeArrangementClip(confirmRemoveArrId);
+          setSelectedArrId(null);
+        }}
+      />
     </div>
   );
 }
