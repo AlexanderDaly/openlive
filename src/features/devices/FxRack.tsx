@@ -1,11 +1,9 @@
 /**
  * FxRack — Ableton-style device chain strip: Reverb → Delay → Filter.
- * One knob per card is wired to a real store param via `setFxParam`
- * (reverb, delay, filterFreq); secondary knobs are visual-only macros.
- * The per-device power toggle is visual (dims/bypasses the card) and
- * does not mutate the stored values.
+ * Every knob and power toggle is wired to the store via `setFxParam`
+ * (send amounts, cutoff) and `setTrackFx` (device power + macros);
+ * the engine maps them onto the real Tone.js chain.
  */
-import { useState } from 'react';
 import { useProjectStore } from '@/store/projectStore';
 import type { FxParam, Track } from '@/types/daw';
 import Knob from './Knob';
@@ -31,15 +29,18 @@ interface FxRackProps {
 
 export default function FxRack({ track }: FxRackProps) {
   const setFxParam = useProjectStore((s) => s.setFxParam);
-  const [power, setPower] = useState<Record<DeviceDef['id'], boolean>>({
-    reverb: true,
-    delay: true,
-    filter: true,
-  });
-  // Visual-only macro state for secondary knobs (no engine params exist).
-  const [macro, setMacro] = useState({ decay: 0.5, time: 0.4, feedback: 0.35, reso: 0.3 });
+  const setTrackFx = useProjectStore((s) => s.setTrackFx);
 
   const setFx = (param: FxParam) => (v: number) => setFxParam(track.id, param, v);
+
+  const isOn = (id: DeviceDef['id']): boolean =>
+    id === 'reverb' ? track.fx.reverbOn : id === 'delay' ? track.fx.delayOn : track.fx.filterOn;
+
+  const togglePower = (id: DeviceDef['id']) => {
+    if (id === 'reverb') setTrackFx(track.id, { reverbOn: !track.fx.reverbOn });
+    else if (id === 'delay') setTrackFx(track.id, { delayOn: !track.fx.delayOn });
+    else setTrackFx(track.id, { filterOn: !track.fx.filterOn });
+  };
 
   const knobsFor = (id: DeviceDef['id']) => {
     switch (id) {
@@ -57,11 +58,12 @@ export default function FxRack({ track }: FxRackProps) {
             />
             <Knob
               label="Decay"
-              value={macro.decay}
+              value={track.fx.reverbDecay}
               min={0}
               max={1}
+              defaultValue={0.5}
               formatValue={format01}
-              onChange={(v) => setMacro((m) => ({ ...m, decay: v }))}
+              onChange={(v) => setTrackFx(track.id, { reverbDecay: v })}
             />
           </>
         );
@@ -79,19 +81,21 @@ export default function FxRack({ track }: FxRackProps) {
             />
             <Knob
               label="Time"
-              value={macro.time}
+              value={track.fx.delayTime}
               min={0}
               max={1}
+              defaultValue={0.4}
               formatValue={format01}
-              onChange={(v) => setMacro((m) => ({ ...m, time: v }))}
+              onChange={(v) => setTrackFx(track.id, { delayTime: v })}
             />
             <Knob
               label="Fdbk"
-              value={macro.feedback}
+              value={track.fx.delayFeedback}
               min={0}
               max={1}
+              defaultValue={0.35}
               formatValue={format01}
-              onChange={(v) => setMacro((m) => ({ ...m, feedback: v }))}
+              onChange={(v) => setTrackFx(track.id, { delayFeedback: v })}
             />
           </>
         );
@@ -110,11 +114,12 @@ export default function FxRack({ track }: FxRackProps) {
             />
             <Knob
               label="Res"
-              value={macro.reso}
+              value={track.fx.filterReso}
               min={0}
               max={1}
+              defaultValue={0.3}
               formatValue={format01}
-              onChange={(v) => setMacro((m) => ({ ...m, reso: v }))}
+              onChange={(v) => setTrackFx(track.id, { filterReso: v })}
             />
           </>
         );
@@ -133,7 +138,7 @@ export default function FxRack({ track }: FxRackProps) {
       </div>
       <div className="flex flex-col gap-1">
         {DEVICES.map((device) => {
-          const on = power[device.id];
+          const on = isOn(device.id);
           return (
             <div
               key={device.id}
@@ -141,14 +146,14 @@ export default function FxRack({ track }: FxRackProps) {
                 on ? 'border-[#333]' : 'border-[#2a2a2a] opacity-50'
               }`}
             >
-              {/* power toggle (visual) */}
+              {/* power toggle */}
               <button
                 type="button"
-                onClick={() => setPower((p) => ({ ...p, [device.id]: !p[device.id] }))}
+                onClick={() => togglePower(device.id)}
                 className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[2px] border ${
                   on ? 'border-[#ff8c2e] bg-[#ff8c2e]' : 'border-[#3a3a3a] bg-[#222]'
                 }`}
-                title={`${device.name} power (visual)`}
+                title={`${device.name} power`}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${on ? 'bg-black' : 'bg-[#3a3a3a]'}`}

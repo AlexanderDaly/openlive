@@ -202,6 +202,16 @@ interface PlayingPart {
 const volumeToDb = (v: number): number =>
   v <= 0.0001 ? -Infinity : Tone.gainToDb(Math.min(1, Math.max(0, v)));
 
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+/** TrackFx 0..1 macro → reverb tail in seconds. */
+const decaySeconds = (v: number): number => 0.3 + clamp01(v) * 7.7;
+/** TrackFx 0..1 macro → delay time in seconds. */
+const delaySeconds = (v: number): number => 0.05 + clamp01(v) * 0.7;
+/** TrackFx 0..1 macro → filter Q. */
+const resoToQ = (v: number): number => 0.2 + clamp01(v) * 11.8;
+/** Filter "bypass" = fully open cutoff (keeps the node in the chain). */
+const FILTER_OPEN_HZ = 18000;
+
 /* ------------------------------------------------------------------ */
 /* Engine                                                              */
 /* ------------------------------------------------------------------ */
@@ -391,13 +401,14 @@ class AudioEngine {
     if (!this.master) throw new Error('engine not started');
     const voice = this.buildVoice(track);
     const filter = new Tone.Filter(track.fx.filterFreq, 'lowpass');
+    filter.Q.value = resoToQ(track.fx.filterReso);
     const channel = new Tone.Channel({ volume: volumeToDb(track.volume), pan: track.pan });
     const meter = new Tone.Meter({ normalRange: true, smoothing: 0.8 });
 
-    const reverb = new Tone.Reverb({ decay: 2.8, wet: 1 });
+    const reverb = new Tone.Reverb({ decay: decaySeconds(track.fx.reverbDecay), wet: 1 });
     // Generate IR asynchronously; send stays silent until ready (no click/glitch).
     void reverb.generate();
-    const delay = new Tone.FeedbackDelay('8n.', 0.35);
+    const delay = new Tone.FeedbackDelay(delaySeconds(track.fx.delayTime), clamp01(track.fx.delayFeedback) * 0.95);
     delay.wet.value = 1;
     const reverbSend = new Tone.Gain(track.fx.reverb);
     const delaySend = new Tone.Gain(track.fx.delay);
@@ -434,17 +445,27 @@ class AudioEngine {
   }
 
   private applyTrackParams(track: Track, chain: TrackChain, anySolo: boolean): void {
+    const fx = track.fx;
     chain.channel.volume.value = volumeToDb(track.volume);
     chain.channel.pan.value = track.pan;
     // Ableton-style solo: if anything is soloed, all non-soloed tracks are muted.
     const effectiveMute = track.muted || (anySolo && !track.soloed);
     chain.channel.mute = effectiveMute;
-    chain.filter.frequency.value = track.fx.filterFreq;
+    chain.filter.frequency.value = fx.filterOn ? fx.filterFreq : FILTER_OPEN_HZ;
+    chain.filter.Q.value = resoToQ(fx.filterReso);
     // The sends tap the chain BEFORE the channel (pre-fader), so muting the
     // channel alone would still leak reverb/delay from a muted track. Gate
-    // the send gains with the same effective-mute flag.
-    chain.reverbSend.gain.value = effectiveMute ? 0 : track.fx.reverb;
-    chain.delaySend.gain.value = effectiveMute ? 0 : track.fx.delay;
+    // the send gains with the same effective-mute flag (and device power).
+    chain.reverbSend.gain.value = effectiveMute || !fx.reverbOn ? 0 : fx.reverb;
+    chain.delaySend.gain.value = effectiveMute || !fx.delayOn ? 0 : fx.delay;
+    // Reverb.decay regenerates the impulse response on assignment — only
+    // touch it when the value actually changed (volume drags would
+    // otherwise trigger an IR regen storm).
+    const decay = decaySeconds(fx.reverbDecay);
+    if (chain.reverb.decay !== decay) chain.reverb.decay = decay;
+    chain.delay.delayTime.value = delaySeconds(fx.delayTime);
+    // Feedback capped below self-oscillation even at macro = 1.
+    chain.delay.feedback.value = clamp01(fx.delayFeedback) * 0.95;
   }
 
   private disposeChain(chain: TrackChain): void {

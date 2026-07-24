@@ -60,6 +60,16 @@ describe('tracks', () => {
     expect(bass.fx.reverb).toBe(1);
     expect(bass.fx.filterFreq).toBe(20);
   });
+
+  it('setTrackFx toggles device power, clamps macros, leaves other fields alone', () => {
+    S().setTrackFx('track-keys', { reverbOn: false, reverbDecay: 4, delayFeedback: -1 });
+    const keys = S().tracks.find((t) => t.id === 'track-keys')!;
+    expect(keys.fx.reverbOn).toBe(false);
+    expect(keys.fx.reverbDecay).toBe(1);
+    expect(keys.fx.delayFeedback).toBe(0);
+    expect(keys.fx.reverb).toBe(0.35);
+    expect(keys.fx.delayOn).toBe(true);
+  });
 });
 
 describe('clips', () => {

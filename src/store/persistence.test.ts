@@ -95,6 +95,22 @@ describe('validation', () => {
     expect(coerced.masterVolume).toBeCloseTo(0.9);
     expect(coerced.loop).toEqual({ startBar: 0, lengthBars: 1 });
   });
+
+  it('back-fills TrackFx fields missing from older files', () => {
+    const content = pickContent(useProjectStore.getState());
+    content.tracks = content.tracks.map((t) => ({
+      ...t,
+      fx: { reverb: 0.4, delay: 0.1, filterFreq: 9000 } as typeof t.fx,
+    }));
+    const coerced = coerceProjectFile(wrap(content));
+    for (const t of coerced.tracks) {
+      expect(t.fx.reverbOn).toBe(true);
+      expect(t.fx.delayOn).toBe(true);
+      expect(t.fx.filterOn).toBe(true);
+      expect(t.fx.reverbDecay).toBeCloseTo(0.5);
+    }
+    expect(coerced.tracks[0]?.fx.reverb).toBe(0.4);
+  });
 });
 
 describe('localStorage save / hydrate', () => {

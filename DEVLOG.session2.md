@@ -312,6 +312,14 @@ No gradients on chrome (contract). ASCII glow is the one intentional light effec
 2. Map it in `engine.applyTrackParams` or chain build.
 3. Wire UI in `features/mixer` only.
 
+**New FX device param**
+
+1. Add the field to `TrackFx` in `daw.ts` + `DEFAULT_TRACK_FX` (persistence
+   back-fills it for old files).
+2. Use `setTrackFx(trackId, partial)` — clamp in the action, map in
+   `engine.applyTrackParams`. Watch for expensive setters: `Reverb.decay`
+   regenerates the IR on every assignment, so guard with a changed-check.
+
 **New clip editor gesture**
 
 1. Mutate notes only via `patchClipNotes` or `updateClipNotes` with **fresh** state.

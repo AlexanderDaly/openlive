@@ -14,7 +14,8 @@
  * audio engine follows automatically (store → engine, never the reverse).
  */
 import { useProjectStore } from '@/store/projectStore';
-import type { ProjectContent, ProjectState } from '@/types/daw';
+import { DEFAULT_TRACK_FX } from '@/types/daw';
+import type { ProjectContent, ProjectState, TrackFx } from '@/types/daw';
 
 export const PROJECT_FILE_VERSION = 1;
 export const STORAGE_KEY = 'openlive.project.v1';
@@ -111,7 +112,11 @@ export function coerceProjectFile(data: unknown): ProjectContent {
     view: c.view === 'arrangement' ? 'arrangement' : 'session',
     loop,
     masterVolume: clamp(typeof c.masterVolume === 'number' ? c.masterVolume : 0.9, 0, 1),
-    tracks: c.tracks as ProjectContent['tracks'],
+    // Older files may predate newer TrackFx fields — fill defaults.
+    tracks: (c.tracks as ProjectContent['tracks']).map((t) => ({
+      ...t,
+      fx: { ...DEFAULT_TRACK_FX, ...(isRecord(t.fx) ? (t.fx as Partial<TrackFx>) : {}) },
+    })),
     clips: c.clips as ProjectContent['clips'],
     sessionMatrix: c.sessionMatrix as ProjectContent['sessionMatrix'],
     scenes: c.scenes as ProjectContent['scenes'],

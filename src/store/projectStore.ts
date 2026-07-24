@@ -11,6 +11,7 @@
  * This file is part of the fixed contract — feature agents must not edit it.
  */
 import { create } from 'zustand';
+import { DEFAULT_TRACK_FX } from '@/types/daw';
 import type {
   ArrangementClip,
   Clip,
@@ -20,6 +21,7 @@ import type {
   ProjectState,
   Scene,
   Track,
+  TrackFx,
   ViewMode,
 } from '@/types/daw';
 
@@ -46,22 +48,22 @@ const demoTracks: Track[] = [
   {
     id: TRACK_IDS.drums, name: 'Drums', type: 'drums', color: '#e05c5c',
     volume: 0.9, pan: 0, muted: false, soloed: false, instrument: 'drumkit',
-    fx: { reverb: 0.15, delay: 0, filterFreq: 18000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.15 },
   },
   {
     id: TRACK_IDS.bass, name: 'Bass', type: 'midi', color: '#e0a43c',
     volume: 0.8, pan: 0, muted: false, soloed: false, instrument: 'bass',
-    fx: { reverb: 0.05, delay: 0, filterFreq: 12000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.05, filterFreq: 12000 },
   },
   {
     id: TRACK_IDS.keys, name: 'Keys', type: 'midi', color: '#5cb56a',
     volume: 0.75, pan: -0.1, muted: false, soloed: false, instrument: 'keys',
-    fx: { reverb: 0.35, delay: 0.25, filterFreq: 18000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.35, delay: 0.25 },
   },
   {
     id: TRACK_IDS.lead, name: 'Lead', type: 'midi', color: '#b06fc9',
     volume: 0.7, pan: 0.15, muted: false, soloed: false, instrument: 'keys',
-    fx: { reverb: 0.3, delay: 0.4, filterFreq: 16000 },
+    fx: { ...DEFAULT_TRACK_FX, reverb: 0.3, delay: 0.4, filterFreq: 16000 },
   },
 ];
 
@@ -226,7 +228,7 @@ export const useProjectStore = create<ProjectState>()((set) => ({
           muted: init?.muted ?? false,
           soloed: init?.soloed ?? false,
           instrument: init?.instrument ?? 'keys',
-          fx: init?.fx ?? { reverb: 0.2, delay: 0, filterFreq: 18000 },
+          fx: init?.fx ?? { ...DEFAULT_TRACK_FX },
         },
       ],
       sessionMatrix: { ...s.sessionMatrix, [id]: Array(8).fill(null) },
@@ -306,6 +308,25 @@ export const useProjectStore = create<ProjectState>()((set) => ({
             }
           : t,
       ),
+    })),
+
+  setTrackFx: (trackId, partial: Partial<TrackFx>) =>
+    set((s) => ({
+      tracks: s.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const fx: TrackFx = { ...t.fx };
+        if (partial.reverb !== undefined) fx.reverb = clamp(partial.reverb, 0, 1);
+        if (partial.delay !== undefined) fx.delay = clamp(partial.delay, 0, 1);
+        if (partial.filterFreq !== undefined) fx.filterFreq = clamp(partial.filterFreq, 20, 18000);
+        if (partial.reverbOn !== undefined) fx.reverbOn = partial.reverbOn;
+        if (partial.delayOn !== undefined) fx.delayOn = partial.delayOn;
+        if (partial.filterOn !== undefined) fx.filterOn = partial.filterOn;
+        if (partial.reverbDecay !== undefined) fx.reverbDecay = clamp(partial.reverbDecay, 0, 1);
+        if (partial.delayTime !== undefined) fx.delayTime = clamp(partial.delayTime, 0, 1);
+        if (partial.delayFeedback !== undefined) fx.delayFeedback = clamp(partial.delayFeedback, 0, 1);
+        if (partial.filterReso !== undefined) fx.filterReso = clamp(partial.filterReso, 0, 1);
+        return { ...t, fx };
+      }),
     })),
 
   // ---- clip actions ----

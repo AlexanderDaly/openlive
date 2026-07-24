@@ -63,7 +63,33 @@ export interface TrackFx {
   delay: number;
   /** Low-pass filter cutoff in Hz (20 .. 18000). Default 18000 = open. */
   filterFreq: number;
+  /** Device power: false = bypassed (send gated / filter opened). */
+  reverbOn: boolean;
+  delayOn: boolean;
+  filterOn: boolean;
+  /** Reverb tail 0 .. 1 (engine maps to decay seconds). */
+  reverbDecay: number;
+  /** Delay time 0 .. 1 (engine maps to seconds). */
+  delayTime: number;
+  /** Delay feedback 0 .. 1. */
+  delayFeedback: number;
+  /** Filter resonance 0 .. 1 (engine maps to Q). */
+  filterReso: number;
 }
+
+/** Defaults for a new/loaded track's FX chain (FxRack shows these). */
+export const DEFAULT_TRACK_FX: TrackFx = {
+  reverb: 0.2,
+  delay: 0,
+  filterFreq: 18000,
+  reverbOn: true,
+  delayOn: true,
+  filterOn: true,
+  reverbDecay: 0.5,
+  delayTime: 0.4,
+  delayFeedback: 0.35,
+  filterReso: 0.3,
+};
 
 export interface Track {
   id: string;
@@ -147,6 +173,8 @@ export interface ProjectState extends ProjectContent {
   toggleMute: (trackId: string) => void;
   toggleSolo: (trackId: string) => void;
   setFxParam: (trackId: string, param: FxParam, value: number) => void;
+  /** Patch any TrackFx field (device power + macros), with the same clamp discipline as setFxParam. */
+  setTrackFx: (trackId: string, partial: Partial<TrackFx>) => void;
 
   // ---- clip actions ----
   /** Creates a clip in the pool and (optionally) drops it into a session slot. */

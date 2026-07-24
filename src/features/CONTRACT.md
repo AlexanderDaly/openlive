@@ -48,7 +48,11 @@ State: `bpm`, `isPlaying`, `metronome`, `swing` (0..0.6), `view` ('session' | 'a
 
 Actions:
 - Tracks: `addTrack(init?) → id`, `removeTrack`, `renameTrack`, `setVolume` (0..1),
-  `setPan` (-1..1), `toggleMute`, `toggleSolo`, `setFxParam(trackId, 'reverb'|'delay'|'filterFreq', v)`
+  `setPan` (-1..1), `toggleMute`, `toggleSolo`, `setFxParam(trackId, 'reverb'|'delay'|'filterFreq', v)`,
+  `setTrackFx(trackId, partial)` — patch any `TrackFx` field (device power
+  `reverbOn`/`delayOn`/`filterOn`, macros `reverbDecay`/`delayTime`/`delayFeedback`/`filterReso`,
+  all 0..1 except `filterFreq` 20..18000; engine maps macros to decay seconds,
+  delay seconds, and filter Q; bypass = send gated to 0 / filter opened)
 - Clips: `createClip(trackId, slotIndex?, init?) → id`, `deleteClip`, `updateClipNotes`,
   `renameClip`, `setClipColor`, `selectClip`, `setSlot(trackId, slotIndex, clipId | null)`
 - Launching: `launchClip(trackId, clipId)` (quantized to next bar by the engine,
