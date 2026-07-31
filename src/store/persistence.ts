@@ -15,7 +15,18 @@
  */
 import { useProjectStore } from '@/store/projectStore';
 import { DEFAULT_TRACK_FX } from '@/types/daw';
-import type { ProjectContent, ProjectState, TrackFx } from '@/types/daw';
+import type {
+  ArrangementClip,
+  Clip,
+  InstrumentKind,
+  NoteEvent,
+  ProjectContent,
+  ProjectState,
+  Scene,
+  Track,
+  TrackFx,
+  TrackType,
+} from '@/types/daw';
 
 export const PROJECT_FILE_VERSION = 1;
 export const STORAGE_KEY = 'openlive.project.v1';
@@ -79,10 +90,130 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+/* ------------------------------------------------------------------ */
+/* Per-entity coercion                                                 */
+/*                                                                     */
+/* Everything below is defensive on purpose: a project file (or a      */
+/* localStorage payload) is untrusted input, and the app renders it    */
+/* directly. Anything that cannot be repaired into a usable entity is  */
+/* DROPPED rather than passed through — a malformed clip that reaches  */
+/* the engine or the grid would throw during render, and a bad         */
+/* autosave would then reproduce that crash on every reload.           */
+/* ------------------------------------------------------------------ */
+
+const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback);
+
+const num = (v: unknown, fallback: number): number =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+
+const bool = (v: unknown, fallback: boolean): boolean =>
+  typeof v === 'boolean' ? v : fallback;
+
+/** Non-empty string id, or null when unusable. */
+const id = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+
+const int = (v: unknown, fallback: number, min: number): number =>
+  Math.max(min, Math.floor(num(v, fallback)));
+
+const TRACK_TYPES: readonly TrackType[] = ['midi', 'drums'];
+const INSTRUMENTS: readonly InstrumentKind[] = ['drumkit', 'bass', 'keys'];
+
+const coerceFx = (raw: unknown): TrackFx => {
+  const f = isRecord(raw) ? raw : {};
+  return {
+    reverb: clamp(num(f.reverb, DEFAULT_TRACK_FX.reverb), 0, 1),
+    delay: clamp(num(f.delay, DEFAULT_TRACK_FX.delay), 0, 1),
+    filterFreq: clamp(num(f.filterFreq, DEFAULT_TRACK_FX.filterFreq), 20, 18000),
+    reverbOn: bool(f.reverbOn, DEFAULT_TRACK_FX.reverbOn),
+    delayOn: bool(f.delayOn, DEFAULT_TRACK_FX.delayOn),
+    filterOn: bool(f.filterOn, DEFAULT_TRACK_FX.filterOn),
+    reverbDecay: clamp(num(f.reverbDecay, DEFAULT_TRACK_FX.reverbDecay), 0, 1),
+    delayTime: clamp(num(f.delayTime, DEFAULT_TRACK_FX.delayTime), 0, 1),
+    delayFeedback: clamp(num(f.delayFeedback, DEFAULT_TRACK_FX.delayFeedback), 0, 1),
+    filterReso: clamp(num(f.filterReso, DEFAULT_TRACK_FX.filterReso), 0, 1),
+  };
+};
+
+/** A track without a usable id is unaddressable — drop it. */
+const coerceTrack = (raw: unknown, index: number): Track | null => {
+  if (!isRecord(raw)) return null;
+  const trackId = id(raw.id);
+  if (!trackId) return null;
+  const type = TRACK_TYPES.find((t) => t === raw.type) ?? 'midi';
+  const instrument = INSTRUMENTS.find((k) => k === raw.instrument) ?? 'keys';
+  return {
+    id: trackId,
+    name: str(raw.name, `Track ${index + 1}`),
+    type,
+    color: str(raw.color, '#4a90d9'),
+    volume: clamp(num(raw.volume, 0.8), 0, 1),
+    pan: clamp(num(raw.pan, 0), -1, 1),
+    muted: bool(raw.muted, false),
+    soloed: bool(raw.soloed, false),
+    instrument,
+    fx: coerceFx(raw.fx),
+  };
+};
+
+/** Notes are the hot path in the engine — a bad one is dropped, not repaired. */
+const coerceNote = (raw: unknown): NoteEvent | null => {
+  if (!isRecord(raw)) return null;
+  const note = id(raw.note);
+  if (!note || typeof raw.step !== 'number' || !Number.isFinite(raw.step)) return null;
+  const event: NoteEvent = {
+    step: Math.max(0, Math.floor(raw.step)),
+    note,
+    velocity: clamp(num(raw.velocity, 0.9), 0, 1),
+  };
+  // `duration` is optional in the model — only carry it when present.
+  if (raw.duration !== undefined) event.duration = int(raw.duration, 1, 1);
+  return event;
+};
+
+const coerceClip = (raw: unknown, key: string): Clip | null => {
+  if (!isRecord(raw)) return null;
+  const clipId = id(raw.id) ?? key;
+  const trackId = id(raw.trackId);
+  if (!clipId || !trackId) return null;
+  const notes = Array.isArray(raw.notes)
+    ? raw.notes.map(coerceNote).filter((n): n is NoteEvent => n !== null)
+    : [];
+  return {
+    id: clipId,
+    trackId,
+    name: str(raw.name, 'Clip'),
+    color: str(raw.color, '#4a90d9'),
+    lengthSteps: int(raw.lengthSteps, 16, 1),
+    notes,
+  };
+};
+
+const coerceArrangementClip = (
+  raw: unknown,
+  index: number,
+  clips: Record<string, Clip>,
+  trackIds: ReadonlySet<string>,
+): ArrangementClip | null => {
+  if (!isRecord(raw)) return null;
+  const clipId = id(raw.clipId);
+  const trackId = id(raw.trackId);
+  // A block pointing at a missing clip or track can never render or sound.
+  if (!clipId || !trackId || !clips[clipId] || !trackIds.has(trackId)) return null;
+  return {
+    id: id(raw.id) ?? `arr-${index + 1}`,
+    clipId,
+    trackId,
+    startBar: int(raw.startBar, 0, 0),
+    lengthBars: int(raw.lengthBars, 1, 1),
+  };
+};
+
 /**
  * Validate + normalize parsed JSON into a `ProjectContent`.
- * Throws `Error` with a human-readable message on anything unusable;
- * unknown extra fields are dropped, bad numeric ranges are clamped.
+ * Throws `Error` with a human-readable message when the payload is not an
+ * OpenLive project at all; anything salvageable is repaired in place —
+ * unknown fields dropped, numeric ranges clamped, malformed entities and
+ * dangling references removed.
  */
 export function coerceProjectFile(data: unknown): ProjectContent {
   if (!isRecord(data)) throw new Error('Not a JSON object');
@@ -105,6 +236,46 @@ export function coerceProjectFile(data: unknown): ProjectContent {
       }
     : null;
 
+  const tracks = c.tracks
+    .map((t, i) => coerceTrack(t, i))
+    .filter((t): t is Track => t !== null);
+  const trackIds = new Set(tracks.map((t) => t.id));
+
+  const clips: Record<string, Clip> = {};
+  for (const [key, raw] of Object.entries(c.clips)) {
+    const clip = coerceClip(raw, key);
+    // Keep the pool addressable by the key the rest of the project uses.
+    if (clip && trackIds.has(clip.trackId)) clips[key] = { ...clip, id: key };
+  }
+
+  // Rows only exist for live tracks; slots only point at live clips.
+  const sessionMatrix: Record<string, (string | null)[]> = {};
+  for (const track of tracks) {
+    const row = c.sessionMatrix[track.id];
+    sessionMatrix[track.id] = Array.isArray(row)
+      ? row.map((slot) => (typeof slot === 'string' && clips[slot] ? slot : null))
+      : [];
+  }
+
+  // `Scene.slotByTrack` is a projection of the matrix, never an independent
+  // source of truth — rebuild it so a drifted file cannot lie about scenes.
+  const scenes: Scene[] = c.scenes.map((raw, i) => {
+    const s = isRecord(raw) ? raw : {};
+    return {
+      id: id(s.id) ?? `scene-${i + 1}`,
+      name: str(s.name, `Scene ${i + 1}`),
+      slotByTrack: Object.fromEntries(
+        tracks.map((t) => [t.id, sessionMatrix[t.id]?.[i] ?? null]),
+      ),
+    };
+  });
+
+  const arrangementClips = c.arrangementClips
+    .map((a, i) => coerceArrangementClip(a, i, clips, trackIds))
+    .filter((a): a is ArrangementClip => a !== null);
+
+  const selectedClipId = typeof c.selectedClipId === 'string' ? c.selectedClipId : null;
+
   return {
     bpm: clamp(Math.round(Number(c.bpm) || 124), 40, 240),
     metronome: c.metronome === true,
@@ -112,16 +283,12 @@ export function coerceProjectFile(data: unknown): ProjectContent {
     view: c.view === 'arrangement' ? 'arrangement' : 'session',
     loop,
     masterVolume: clamp(typeof c.masterVolume === 'number' ? c.masterVolume : 0.9, 0, 1),
-    // Older files may predate newer TrackFx fields — fill defaults.
-    tracks: (c.tracks as ProjectContent['tracks']).map((t) => ({
-      ...t,
-      fx: { ...DEFAULT_TRACK_FX, ...(isRecord(t.fx) ? (t.fx as Partial<TrackFx>) : {}) },
-    })),
-    clips: c.clips as ProjectContent['clips'],
-    sessionMatrix: c.sessionMatrix as ProjectContent['sessionMatrix'],
-    scenes: c.scenes as ProjectContent['scenes'],
-    arrangementClips: c.arrangementClips as ProjectContent['arrangementClips'],
-    selectedClipId: typeof c.selectedClipId === 'string' ? c.selectedClipId : null,
+    tracks,
+    clips,
+    sessionMatrix,
+    scenes,
+    arrangementClips,
+    selectedClipId: selectedClipId && clips[selectedClipId] ? selectedClipId : null,
   };
 }
 
@@ -157,6 +324,12 @@ export function saveToStorage(): boolean {
 /**
  * Restore the autosaved project into the store, if one exists and parses.
  * Call once on boot BEFORE the first render. Returns true when restored.
+ *
+ * `loadProject` clears runtime playback state, which is right when opening
+ * a foreign project but wrong for a page refresh: the fresh store arms
+ * scene row 1 so the first Play always has sound, and a reload used to
+ * silently drop that. Re-arm the first scene so refreshing your own
+ * session behaves like starting one.
  */
 export function hydrateFromStorage(): boolean {
   const s = storage();
@@ -165,6 +338,7 @@ export function hydrateFromStorage(): boolean {
   if (!raw) return false;
   try {
     useProjectStore.getState().loadProject(parseProjectFile(raw));
+    useProjectStore.getState().launchScene(0);
     return true;
   } catch {
     return false; // corrupt payload — keep the demo project

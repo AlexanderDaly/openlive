@@ -72,7 +72,12 @@ export default function MelodicGrid({ clip, track, playheadStep }: MelodicGridPr
       removeNote(note, step);
     } else {
       addNote(note, step);
-      void engine.ensureStarted().then(() => engine.previewNote(track.id, note, 0.85));
+      void engine
+        .ensureStarted()
+        .then(() => engine.previewNote(track.id, note, 0.85))
+        .catch(() => {
+          /* audio unlock failed — the note is still written, just silent */
+        });
     }
   };
 

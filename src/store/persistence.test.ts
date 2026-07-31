@@ -113,6 +113,113 @@ describe('validation', () => {
   });
 });
 
+describe('hostile payloads', () => {
+  const wrap = (content: unknown) => ({ app: 'openlive', version: 1, content });
+  const empty = { tracks: [], clips: {}, sessionMatrix: {}, scenes: [], arrangementClips: [] };
+
+  it('drops entities that cannot be repaired instead of passing them through', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...empty,
+        tracks: [42, { name: 'no id' }, { id: 't1', volume: 'loud', instrument: 'tuba' }],
+        clips: {
+          ok: { id: 'ok', trackId: 't1', notes: [{ step: 0, note: 'C1', velocity: 5 }] },
+          noNotes: { id: 'noNotes', trackId: 't1' },
+          orphan: { id: 'orphan', trackId: 'gone' },
+          junk: 7,
+        },
+      }),
+    );
+
+    expect(coerced.tracks).toHaveLength(1);
+    expect(coerced.tracks[0]?.volume).toBe(0.8); // non-numeric → default
+    expect(coerced.tracks[0]?.instrument).toBe('keys'); // unknown kind → default
+    // Every surviving clip is renderable and playable.
+    expect(Object.keys(coerced.clips).sort()).toEqual(['noNotes', 'ok']);
+    for (const clip of Object.values(coerced.clips)) {
+      expect(Array.isArray(clip.notes)).toBe(true);
+      expect(clip.lengthSteps).toBeGreaterThan(0);
+    }
+    expect(coerced.clips.ok?.notes[0]?.velocity).toBe(1); // clamped
+  });
+
+  it('drops malformed notes but keeps the rest of the pattern', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...empty,
+        tracks: [{ id: 't1' }],
+        clips: {
+          c: {
+            id: 'c',
+            trackId: 't1',
+            notes: [
+              { step: 0, note: 'C1', velocity: 0.5, duration: 2 },
+              { step: 'nope', note: 'D1' },
+              { step: 1 },
+              null,
+            ],
+          },
+        },
+      }),
+    );
+    expect(coerced.clips.c?.notes).toEqual([
+      { step: 0, note: 'C1', velocity: 0.5, duration: 2 },
+    ]);
+  });
+
+  it('repairs matrix rows and removes dangling references', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...empty,
+        tracks: [{ id: 't1' }],
+        clips: { c: { id: 'c', trackId: 't1' } },
+        sessionMatrix: { t1: 'not-an-array', ghost: ['c'] },
+        arrangementClips: [
+          { id: 'a1', clipId: 'c', trackId: 't1', startBar: -5, lengthBars: 0 },
+          { id: 'a2', clipId: 'missing', trackId: 't1' },
+        ],
+        selectedClipId: 'missing',
+      }),
+    );
+    expect(coerced.sessionMatrix).toEqual({ t1: [] }); // bad row emptied, ghost row gone
+    expect(coerced.arrangementClips).toEqual([
+      { id: 'a1', clipId: 'c', trackId: 't1', startBar: 0, lengthBars: 1 },
+    ]);
+    expect(coerced.selectedClipId).toBeNull();
+  });
+
+  it('rebuilds drifted scene snapshots from the matrix', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...empty,
+        tracks: [{ id: 't1' }],
+        clips: { c: { id: 'c', trackId: 't1' } },
+        sessionMatrix: { t1: ['c', null] },
+        scenes: [{ id: 's1', name: 'A', slotByTrack: { t1: 'stale' } }, 'junk'],
+      }),
+    );
+    expect(coerced.scenes[0]?.slotByTrack).toEqual({ t1: 'c' });
+    expect(coerced.scenes[1]).toEqual({ id: 'scene-2', name: 'Scene 2', slotByTrack: { t1: null } });
+  });
+
+  it('leaves the store usable after loading a hostile file', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...empty,
+        tracks: [{ id: 't1' }, 'junk'],
+        clips: { c: { id: 'c', trackId: 't1', notes: 'nope' } },
+        sessionMatrix: { t1: 'not-an-array' },
+      }),
+    );
+    useProjectStore.getState().loadProject(coerced);
+    // These all walked straight into a TypeError before validation was deep.
+    expect(() => useProjectStore.getState().deleteClip('c')).not.toThrow();
+    expect(() => useProjectStore.getState().setSlot('t1', 2, null)).not.toThrow();
+    expect(() => useProjectStore.getState().launchScene(0)).not.toThrow();
+    expect(() => useProjectStore.getState().removeTrack('t1')).not.toThrow();
+  });
+});
+
 describe('localStorage save / hydrate', () => {
   it('round-trips through storage and resets playback state', () => {
     installStorage();
@@ -124,6 +231,16 @@ describe('localStorage save / hydrate', () => {
     expect(hydrateFromStorage()).toBe(true);
     expect(useProjectStore.getState().bpm).toBe(200);
     expect(useProjectStore.getState().isPlaying).toBe(false);
+  });
+
+  it('re-arms scene row 1 so Play still has sound after a refresh', () => {
+    installStorage();
+    saveToStorage();
+    useProjectStore.setState({ playingClipByTrack: {} });
+
+    expect(hydrateFromStorage()).toBe(true);
+    expect(useProjectStore.getState().isPlaying).toBe(false);
+    expect(useProjectStore.getState().playingClipByTrack['track-drums']).toBe('clip-beat-a');
   });
 
   it('hydrate is safe with no/corrupt payload', () => {

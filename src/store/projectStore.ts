@@ -32,6 +32,25 @@ const uid = (): string =>
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+/**
+ * `Scene.slotByTrack` is a PROJECTION of the session matrix, never an
+ * independent source of truth — `launchScene` reads the matrix row. Every
+ * action that writes the matrix (or the track list) re-projects the scenes
+ * through this helper, so the snapshot cannot drift out of sync and get
+ * serialized into a project file as a lie.
+ */
+const projectScenes = (
+  scenes: Scene[],
+  sessionMatrix: Record<string, (string | null)[]>,
+  tracks: Track[],
+): Scene[] =>
+  scenes.map((scene, index) => ({
+    ...scene,
+    slotByTrack: Object.fromEntries(
+      tracks.map((t) => [t.id, sessionMatrix[t.id]?.[index] ?? null]),
+    ),
+  }));
+
 /* ------------------------------------------------------------------ */
 /* Demo project seed — 4 tracks, coherent scenes, small arrangement.  */
 /* Key: A minor. Groove: basic house/techno at 124 bpm.               */
@@ -215,8 +234,8 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   // ---- track actions ----
   addTrack: (init) => {
     const id = uid();
-    set((s) => ({
-      tracks: [
+    set((s) => {
+      const tracks: Track[] = [
         ...s.tracks,
         {
           id,
@@ -230,9 +249,15 @@ export const useProjectStore = create<ProjectState>()((set) => ({
           instrument: init?.instrument ?? 'keys',
           fx: init?.fx ?? { ...DEFAULT_TRACK_FX },
         },
-      ],
-      sessionMatrix: { ...s.sessionMatrix, [id]: Array(8).fill(null) },
-    }));
+      ];
+      const sessionMatrix = { ...s.sessionMatrix, [id]: Array(8).fill(null) as (string | null)[] };
+      return {
+        tracks,
+        sessionMatrix,
+        // The new track needs a (null) slot in every existing scene.
+        scenes: projectScenes(s.scenes, sessionMatrix, tracks),
+      };
+    });
     return id;
   },
 
@@ -245,17 +270,14 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       delete sessionMatrix[trackId];
       const playingClipByTrack = { ...s.playingClipByTrack };
       delete playingClipByTrack[trackId];
+      const tracks = s.tracks.filter((t) => t.id !== trackId);
       return {
-        tracks: s.tracks.filter((t) => t.id !== trackId),
+        tracks,
         clips,
         sessionMatrix,
         playingClipByTrack,
         arrangementClips: s.arrangementClips.filter((a) => a.trackId !== trackId),
-        scenes: s.scenes.map((sc) => {
-          const slotByTrack = { ...sc.slotByTrack };
-          delete slotByTrack[trackId];
-          return { ...sc, slotByTrack };
-        }),
+        scenes: projectScenes(s.scenes, sessionMatrix, tracks),
         selectedClipId:
           s.selectedClipId && clips[s.selectedClipId] ? s.selectedClipId : null,
       };
@@ -352,6 +374,7 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       return {
         clips: { ...s.clips, [id]: clip },
         sessionMatrix,
+        scenes: projectScenes(s.scenes, sessionMatrix, s.tracks),
         selectedClipId: id,
       };
     });
@@ -374,17 +397,11 @@ export const useProjectStore = create<ProjectState>()((set) => ({
           c === clipId ? null : c,
         ]),
       );
-      const scenes = s.scenes.map((sc) => ({
-        ...sc,
-        slotByTrack: Object.fromEntries(
-          Object.entries(sc.slotByTrack).map(([tid, c]) => [tid, c === clipId ? null : c]),
-        ),
-      }));
       return {
         clips,
         sessionMatrix,
         playingClipByTrack,
-        scenes,
+        scenes: projectScenes(s.scenes, sessionMatrix, s.tracks),
         arrangementClips: s.arrangementClips.filter((a) => a.clipId !== clipId),
         selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId,
       };
@@ -418,7 +435,8 @@ export const useProjectStore = create<ProjectState>()((set) => ({
       const slots = [...(s.sessionMatrix[trackId] ?? [])];
       while (slots.length <= slotIndex) slots.push(null);
       slots[slotIndex] = clipId;
-      return { sessionMatrix: { ...s.sessionMatrix, [trackId]: slots } };
+      const sessionMatrix = { ...s.sessionMatrix, [trackId]: slots };
+      return { sessionMatrix, scenes: projectScenes(s.scenes, sessionMatrix, s.tracks) };
     }),
 
   // ---- session launching ----
@@ -583,6 +601,7 @@ export const useProjectStore = create<ProjectState>()((set) => ({
     set({
       ...createDemoContent(),
       isPlaying: false,
-      playingClipByTrack: {},
+      // Same seed as a cold boot: Scene A armed, so the first Play has sound.
+      playingClipByTrack: slotFor(0),
     }),
 }));

@@ -57,7 +57,12 @@ export default function DrumGrid({ clip, playheadStep }: DrumGridProps) {
       removeNote(note, step);
     } else {
       addNote(note, step);
-      void engine.ensureStarted().then(() => engine.previewNote(clip.trackId, note));
+      void engine
+        .ensureStarted()
+        .then(() => engine.previewNote(clip.trackId, note))
+        .catch(() => {
+          /* audio unlock failed — the note is still written, just silent */
+        });
     }
   };
 
