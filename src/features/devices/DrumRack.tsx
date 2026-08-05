@@ -106,7 +106,12 @@ export default function DrumRack({ track, clip }: DrumRackProps) {
   const onPadClick = (voice: DrumVoice) => {
     // Unlock audio from this user gesture, then audition the pad one-shot
     // through the track's chain (safe no-op if the engine is not started).
-    void engine.ensureStarted().then(() => engine.previewNote(track.id, voice.note));
+    void engine
+      .ensureStarted()
+      .then(() => engine.previewNote(track.id, voice.note))
+      .catch(() => {
+        /* audio unlock failed — the pad still flashes and records */
+      });
 
     setHitNote(voice.note);
     if (hitTimer.current !== null) window.clearTimeout(hitTimer.current);

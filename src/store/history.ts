@@ -104,10 +104,41 @@ export function startHistory(): () => void {
   };
 }
 
+/**
+ * Runtime playback state is deliberately outside history — undo should not
+ * stop your transport. But it REFERENCES the content that history restores,
+ * so a restore that removes those tracks or clips would leave the transport
+ * armed with ids that no longer exist (undoing a reset-to-demo is the easy
+ * way in). The engine skips unknown ids, so Play just goes quiet with no
+ * visible cause. Keep only references the restored project can satisfy.
+ */
+const pruneArmedClips = (
+  armed: Record<string, string | null>,
+  snapshot: HistorySnapshot,
+): Record<string, string | null> => {
+  const liveTracks = new Set(snapshot.tracks.map((t) => t.id));
+  const next: Record<string, string | null> = {};
+  let changed = false;
+  for (const [trackId, clipId] of Object.entries(armed)) {
+    if (!liveTracks.has(trackId)) {
+      changed = true; // the track itself is gone — drop the entry entirely
+      continue;
+    }
+    const kept = clipId && Object.hasOwn(snapshot.clips, clipId) ? clipId : null;
+    if (kept !== clipId) changed = true;
+    next[trackId] = kept;
+  }
+  // Same reference when nothing changed, so the engine does not re-sync.
+  return changed ? next : armed;
+};
+
 function apply(snapshot: HistorySnapshot): void {
   restoring = true;
   try {
-    useProjectStore.setState(snapshot);
+    useProjectStore.setState((s) => ({
+      ...snapshot,
+      playingClipByTrack: pruneArmedClips(s.playingClipByTrack, snapshot),
+    }));
   } finally {
     restoring = false;
   }

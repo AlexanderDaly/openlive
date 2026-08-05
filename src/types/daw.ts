@@ -10,6 +10,34 @@
 /** Steps in one bar. All patterns are step-based at 16 steps per bar. */
 export const STEPS_PER_BAR = 16;
 
+/**
+ * Hard bounds on project geometry.
+ *
+ * These are safety limits, not creative ones — they sit far above any real
+ * project. Views turn these numbers directly into DOM (`Array.from({length:
+ * totalBars})` for the arrangement ruler, one cell per step per row in the
+ * grids, one row per scene) and the engine turns them into scheduled
+ * events, so an unbounded value from a project file locks the tab up long
+ * before anything throws. Loading clamps to these; the store clamps the
+ * actions that accept arbitrary numbers.
+ */
+export const LIMITS = {
+  /** Channel strips, session columns and Tone.js voice chains per project. */
+  tracks: 64,
+  /** Clips retained in the pool. */
+  poolClips: 1024,
+  /** Session matrix rows / scenes (each is a rendered row). */
+  sceneRows: 128,
+  /** Pattern length — 64 bars at 16 steps. Each step is a rendered cell. */
+  clipSteps: 64 * STEPS_PER_BAR,
+  /** Notes per clip (each becomes a scheduled Tone.Part event). */
+  notesPerClip: 4096,
+  /** Timeline length in bars — each bar is a rendered ruler cell. */
+  arrangementBars: 1024,
+  /** Blocks placed on the timeline (each is a rendered element). */
+  arrangementClips: 1024,
+} as const;
+
 export type TrackType = 'midi' | 'drums';
 
 export type InstrumentKind = 'drumkit' | 'bass' | 'keys';

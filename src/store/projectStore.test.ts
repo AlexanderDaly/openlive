@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createDemoContent, useProjectStore } from '@/store/projectStore';
+import { LIMITS } from '@/types/daw';
 
 const resetStore = () => {
   useProjectStore.setState({
@@ -25,6 +26,47 @@ describe('demo seed', () => {
     expect(S().scenes).toHaveLength(3);
     expect(S().arrangementClips.length).toBeGreaterThan(0);
     expect(S().masterVolume).toBeCloseTo(0.9);
+  });
+});
+
+describe('scene ↔ matrix projection', () => {
+  /** `Scene.slotByTrack` must always mirror the matrix row of the same index. */
+  const expectScenesMirrorMatrix = () => {
+    S().scenes.forEach((scene, index) => {
+      const expected = Object.fromEntries(
+        S().tracks.map((t) => [t.id, S().sessionMatrix[t.id]?.[index] ?? null]),
+      );
+      expect(scene.slotByTrack).toEqual(expected);
+    });
+  };
+
+  it('holds for the demo seed', expectScenesMirrorMatrix);
+
+  it('survives createClip into an existing scene row', () => {
+    const id = S().createClip('track-lead', 0, { name: 'Late Lead' });
+    expect(S().scenes[0]?.slotByTrack['track-lead']).toBe(id);
+    expectScenesMirrorMatrix();
+  });
+
+  it('survives setSlot writes and clears', () => {
+    S().setSlot('track-bass', 1, 'clip-bass-a');
+    expect(S().scenes[1]?.slotByTrack['track-bass']).toBe('clip-bass-a');
+    S().setSlot('track-bass', 1, null);
+    expect(S().scenes[1]?.slotByTrack['track-bass']).toBeNull();
+    expectScenesMirrorMatrix();
+  });
+
+  it('gives a new track an empty slot in every existing scene', () => {
+    const id = S().addTrack({ name: 'Extra' });
+    for (const scene of S().scenes) expect(scene.slotByTrack[id]).toBeNull();
+    expectScenesMirrorMatrix();
+  });
+
+  it('survives deleteClip and removeTrack', () => {
+    S().deleteClip('clip-beat-a');
+    expectScenesMirrorMatrix();
+    S().removeTrack('track-keys');
+    expectScenesMirrorMatrix();
   });
 });
 
@@ -171,6 +213,42 @@ describe('transport / meta', () => {
   });
 });
 
+describe('geometry bounds', () => {
+  it('clamps arrangement placement, moves and resizes inside the timeline', () => {
+    const id = S().addToArrangement('clip-beat-a', 'track-drums', 1e9, 1e6);
+    const placed = S().arrangementClips.find((a) => a.id === id)!;
+    expect(placed.startBar + placed.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+
+    S().resizeArrangementClip(id, 1e9);
+    S().moveArrangementClip(id, 1e9);
+    const moved = S().arrangementClips.find((a) => a.id === id)!;
+    expect(moved.startBar).toBeLessThan(LIMITS.arrangementBars);
+    expect(moved.startBar + moved.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('clamps the loop region', () => {
+    S().setLoop({ startBar: 5e8, lengthBars: 5e8 });
+    const loop = S().loop!;
+    expect(loop.startBar + loop.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('clamps slot indices instead of allocating a giant row', () => {
+    S().setSlot('track-drums', 1e7, 'clip-beat-a');
+    expect(S().sessionMatrix['track-drums']!.length).toBeLessThanOrEqual(LIMITS.sceneRows);
+    const created = S().createClip('track-bass', 1e7);
+    expect(S().sessionMatrix['track-bass']!.length).toBeLessThanOrEqual(LIMITS.sceneRows);
+    expect(S().clips[created]).toBeDefined();
+  });
+
+  it('clamps clip length and refuses to grow scenes past the bound', () => {
+    const id = S().createClip('track-keys', 0, { lengthSteps: 5e8 });
+    expect(S().clips[id]?.lengthSteps).toBe(LIMITS.clipSteps);
+
+    for (let i = 0; i < LIMITS.sceneRows + 5; i++) S().addScene();
+    expect(S().scenes.length).toBeLessThanOrEqual(LIMITS.sceneRows);
+  });
+});
+
 describe('project lifecycle', () => {
   it('loadProject replaces content and resets playback state', () => {
     S().launchScene(0);
@@ -182,13 +260,17 @@ describe('project lifecycle', () => {
     expect(S().playingClipByTrack).toEqual({});
   });
 
-  it('resetToDemo restores the seeded project', () => {
+  it('resetToDemo restores the seeded project with Scene A armed', () => {
     S().removeTrack('track-drums');
     S().setBpm(80);
     S().resetToDemo();
     expect(S().bpm).toBe(124);
     expect(S().tracks).toHaveLength(4);
     expect(S().clips['clip-beat-a']).toBeDefined();
+    // A cold boot arms scene row 1 so the first Play has sound — a reset
+    // must land in the same state, not in a silent one.
+    expect(S().isPlaying).toBe(false);
+    expect(S().playingClipByTrack['track-drums']).toBe('clip-beat-a');
   });
 
   it('createDemoContent returns unshared copies', () => {

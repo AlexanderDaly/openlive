@@ -50,6 +50,16 @@ export default function DrumGrid({ clip, playheadStep }: DrumGridProps) {
   const removeNote = (note: string, step: number) =>
     patchClipNotes(clip.id, (notes) => notes.filter((n) => !(n.note === note && n.step === step)));
 
+  /** Audition a voice, tolerating a failed audio unlock (edits still land). */
+  const preview = (note: string) => {
+    void engine
+      .ensureStarted()
+      .then(() => engine.previewNote(clip.trackId, note))
+      .catch(() => {
+        /* audio unlock failed — stay silent */
+      });
+  };
+
   const toggle = (note: string, step: number) => {
     const exists = hasClipNote(clip.id, note, step);
     paintRef.current = !exists;
@@ -57,7 +67,7 @@ export default function DrumGrid({ clip, playheadStep }: DrumGridProps) {
       removeNote(note, step);
     } else {
       addNote(note, step);
-      void engine.ensureStarted().then(() => engine.previewNote(clip.trackId, note));
+      preview(note);
     }
   };
 
@@ -104,7 +114,7 @@ export default function DrumGrid({ clip, playheadStep }: DrumGridProps) {
             type="button"
             onClick={() => {
               setActiveRow(voice.note);
-              void engine.ensureStarted().then(() => engine.previewNote(clip.trackId, voice.note));
+              preview(voice.note);
             }}
             className={`w-16 shrink-0 pr-2 text-left text-[9px] uppercase tracking-wider transition-colors ${
               activeRow === voice.note ? 'text-[#ff8c2e]' : 'text-neutral-500 hover:text-neutral-300'

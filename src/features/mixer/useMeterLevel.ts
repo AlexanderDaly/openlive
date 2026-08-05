@@ -39,7 +39,16 @@ export function useMeterLevel(read: () => MeterLike | undefined): number {
           v = 0; // engine not ready yet — stay dark
         }
       }
-      setLevel((prev) => (Math.abs(prev - v) > 0.004 ? v : Math.max(v, prev * 0.92)));
+      // Meter ballistics: instant attack, gradual release. The release has
+      // to run on the *falling* case specifically — gating it on "close to
+      // the previous value" never fires on a real drop, which made the
+      // meter snap to silence instead of falling. Settle exactly onto the
+      // target once the gap is inaudible so idle frames stop re-rendering.
+      setLevel((prev) => {
+        if (v >= prev) return v;
+        const released = prev * 0.92;
+        return released - v < 0.004 ? v : released;
+      });
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
