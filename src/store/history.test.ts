@@ -133,4 +133,31 @@ describe('stack rules', () => {
     expect(S().bpm).toBe(124);
     expect(S().view).toBe('arrangement');
   });
+
+  it('a restore never leaves the transport armed with clips it removed', () => {
+    // Reset-to-demo arms Scene A; undoing it restores a project where those
+    // demo clips do not exist. The engine silently skips unknown ids, so a
+    // stale entry would make the next Play mysteriously silent.
+    S().loadProject({
+      ...S(),
+      tracks: [{ ...S().tracks[0]!, id: 'mine' }],
+      clips: {
+        own: { id: 'own', trackId: 'mine', name: 'Own', color: '#fff', lengthSteps: 16, notes: [] },
+      },
+      sessionMatrix: { mine: ['own'] },
+      scenes: [],
+      arrangementClips: [],
+    });
+    tick(COALESCE_MS + 10);
+    S().resetToDemo();
+    expect(S().playingClipByTrack['track-drums']).toBe('clip-beat-a');
+
+    undo();
+    const { clips, playingClipByTrack, tracks } = S();
+    expect(Object.keys(clips)).toEqual(['own']);
+    for (const [trackId, clipId] of Object.entries(playingClipByTrack)) {
+      expect(tracks.some((t) => t.id === trackId)).toBe(true);
+      if (clipId !== null) expect(clips[clipId]).toBeDefined();
+    }
+  });
 });
