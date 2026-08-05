@@ -138,6 +138,32 @@ const id = (v: unknown): string | null =>
 /** Own-property lookup — never answers from the prototype chain. */
 const has = (map: object, key: string): boolean => Object.hasOwn(map, key);
 
+/**
+ * Claim an id within a collection, keeping ids unique.
+ *
+ * A positional fallback ('arr-3') can collide with an id the file supplies
+ * for a different entity, and an id may simply be repeated — either way two
+ * entities end up sharing a primary key, which duplicates React keys and
+ * makes `removeArrangementClip`-style filters delete both. Anything already
+ * taken falls through to the first free `<base>-<n>`.
+ */
+const claimId = (
+  preferred: string | null,
+  base: string,
+  index: number,
+  used: Set<string>,
+): string => {
+  if (preferred && !used.has(preferred)) {
+    used.add(preferred);
+    return preferred;
+  }
+  let n = index + 1;
+  while (used.has(`${base}-${n}`)) n += 1;
+  const allocated = `${base}-${n}`;
+  used.add(allocated);
+  return allocated;
+};
+
 /** Integer clamped into [min, max]; non-numeric input falls back. */
 const int = (v: unknown, fallback: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, Math.floor(num(v, fallback))));
@@ -231,6 +257,7 @@ const coerceArrangementClip = (
   index: number,
   clips: Record<string, Clip>,
   trackIds: ReadonlySet<string>,
+  usedIds: Set<string>,
 ): ArrangementClip | null => {
   if (!isRecord(raw)) return null;
   const clipId = id(raw.clipId);
@@ -240,7 +267,7 @@ const coerceArrangementClip = (
   if (!clipId || !trackId || !has(clips, clipId) || !trackIds.has(trackId)) return null;
   const startBar = int(raw.startBar, 0, 0, LIMITS.arrangementBars - 1);
   return {
-    id: id(raw.id) ?? `arr-${index + 1}`,
+    id: claimId(id(raw.id), 'arr', index, usedIds),
     clipId,
     trackId,
     startBar,
@@ -280,11 +307,18 @@ export function coerceProjectFile(data: unknown): ProjectContent {
       }
     : null;
 
-  const tracks = c.tracks
-    .map((t, i) => coerceTrack(t, i))
-    .filter((t): t is Track => t !== null)
-    .slice(0, LIMITS.tracks);
-  const trackIds = new Set(tracks.map((t) => t.id));
+  // A track id is the primary key for the matrix, scenes, the playback map
+  // and every React key in the mixer and session views — so a repeat is not
+  // a duplicate row but two strips fighting over one. Keep the first.
+  const trackIds = new Set<string>();
+  const tracks: Track[] = [];
+  for (const [i, raw] of c.tracks.entries()) {
+    if (tracks.length >= LIMITS.tracks) break;
+    const track = coerceTrack(raw, i);
+    if (!track || trackIds.has(track.id)) continue;
+    trackIds.add(track.id);
+    tracks.push(track);
+  }
 
   // Null-prototype: `clips['constructor']` must be undefined, not Object.
   const clips: Record<string, Clip> = Object.create(null) as Record<string, Clip>;
@@ -316,10 +350,11 @@ export function coerceProjectFile(data: unknown): ProjectContent {
 
   // `Scene.slotByTrack` is a projection of the matrix, never an independent
   // source of truth — rebuild it so a drifted file cannot lie about scenes.
+  const usedSceneIds = new Set<string>();
   const scenes: Scene[] = c.scenes.slice(0, LIMITS.sceneRows).map((raw, i) => {
     const s = isRecord(raw) ? raw : {};
     return {
-      id: id(s.id) ?? `scene-${i + 1}`,
+      id: claimId(id(s.id), 'scene', i, usedSceneIds),
       name: str(s.name, `Scene ${i + 1}`),
       slotByTrack: Object.fromEntries(
         tracks.map((t) => [t.id, sessionMatrix[t.id]?.[i] ?? null]),
@@ -327,9 +362,10 @@ export function coerceProjectFile(data: unknown): ProjectContent {
     };
   });
 
+  const usedArrangementIds = new Set<string>();
   const arrangementClips = c.arrangementClips
     .slice(0, LIMITS.arrangementClips)
-    .map((a, i) => coerceArrangementClip(a, i, clips, trackIds))
+    .map((a, i) => coerceArrangementClip(a, i, clips, trackIds, usedArrangementIds))
     .filter((a): a is ArrangementClip => a !== null);
 
   const selectedClipId = typeof c.selectedClipId === 'string' ? c.selectedClipId : null;

@@ -276,10 +276,52 @@ describe('prototype-inherited keys', () => {
   });
 
   it('ignores an inherited session-matrix row', () => {
-    // `c.sessionMatrix['t1']` must not resolve through the prototype either.
-    const hostile = JSON.parse('{"__proto__":{"t1":["c"]}}') as Record<string, unknown>;
+    // A REAL prototype link. `JSON.parse('{"__proto__":…}')` defines an own
+    // property and leaves the prototype alone, so it would arm nothing and
+    // this test would pass with or without the own-key guard.
+    const hostile = Object.create({ t1: ['c'] }) as Record<string, unknown>;
+    expect(hostile.t1).toEqual(['c']); // the trap is armed: a bracket read finds it
+    expect(Object.hasOwn(hostile, 't1')).toBe(false);
+
     const coerced = coerceProjectFile(wrap({ ...base, sessionMatrix: hostile }));
     expect(coerced.sessionMatrix.t1).toEqual([]);
+  });
+
+  it('keeps entity ids unique when a file collides with a positional fallback', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...base,
+        // The second block has no id, so it falls back to 'arr-2' — which the
+        // first block already claimed.
+        arrangementClips: [
+          { id: 'arr-2', clipId: 'c', trackId: 't1' },
+          { clipId: 'c', trackId: 't1' },
+        ],
+        scenes: [{ id: 'scene-2', name: 'A' }, { name: 'B' }],
+      }),
+    );
+    const arrIds = coerced.arrangementClips.map((a) => a.id);
+    expect(arrIds).toHaveLength(2);
+    expect(new Set(arrIds).size).toBe(2);
+    const sceneIds = coerced.scenes.map((s) => s.id);
+    expect(new Set(sceneIds).size).toBe(sceneIds.length);
+  });
+
+  it('keeps the first of two tracks sharing an id', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...base,
+        tracks: [
+          { id: 't1', name: 'First' },
+          { id: 't1', name: 'Second' },
+          { id: 't2', name: 'Other' },
+        ],
+      }),
+    );
+    // A repeated id would give two strips one matrix row and one React key,
+    // and `removeTrack` would delete both.
+    expect(coerced.tracks.map((t) => t.id)).toEqual(['t1', 't2']);
+    expect(coerced.tracks[0]?.name).toBe('First');
   });
 });
 
@@ -341,6 +383,31 @@ describe('geometry bounds', () => {
     expect(clip.lengthSteps).toBe(LIMITS.clipSteps);
     expect(clip.notes).toHaveLength(1);
     expect(clip.notes[0]?.duration).toBeLessThanOrEqual(clip.lengthSteps);
+  });
+
+  it('caps the note count per clip', () => {
+    // Each note becomes a scheduled Tone.Part event, so the per-clip cap is
+    // what keeps a crafted pattern from flooding the transport.
+    const { clips } = coerceProjectFile(
+      wrap({
+        tracks: [{ id: 't1' }],
+        clips: {
+          c: {
+            id: 'c',
+            trackId: 't1',
+            lengthSteps: LIMITS.clipSteps,
+            notes: Array.from({ length: LIMITS.notesPerClip + 500 }, (_, i) => ({
+              step: i % LIMITS.clipSteps,
+              note: 'C1',
+            })),
+          },
+        },
+        sessionMatrix: {},
+        scenes: [],
+        arrangementClips: [],
+      }),
+    );
+    expect(clips.c?.notes).toHaveLength(LIMITS.notesPerClip);
   });
 
   it('truncates oversized collections', () => {
