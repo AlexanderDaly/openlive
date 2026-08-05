@@ -11,7 +11,7 @@
  * This file is part of the fixed contract — feature agents must not edit it.
  */
 import { create } from 'zustand';
-import { DEFAULT_TRACK_FX } from '@/types/daw';
+import { DEFAULT_TRACK_FX, LIMITS, STEPS_PER_BAR } from '@/types/daw';
 import type {
   ArrangementClip,
   Clip,
@@ -31,6 +31,15 @@ const uid = (): string =>
     : `id-${Math.random().toString(36).slice(2, 10)}`;
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+/**
+ * Integer clamped into [min, max], NaN-safe. Actions take numbers from
+ * drag maths and callers, and views turn geometry straight into DOM — see
+ * `LIMITS` for why an unbounded bar index is a dead tab rather than a
+ * cosmetic glitch.
+ */
+const clampInt = (v: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, Math.floor(Number.isFinite(v) ? v : min)));
 
 /**
  * `Scene.slotByTrack` is a PROJECTION of the session matrix, never an
@@ -361,14 +370,15 @@ export const useProjectStore = create<ProjectState>()((set) => ({
         trackId,
         name: init?.name ?? 'New Clip',
         color: init?.color ?? track?.color ?? '#4a90d9',
-        lengthSteps: init?.lengthSteps ?? 16,
+        lengthSteps: clampInt(init?.lengthSteps ?? STEPS_PER_BAR, 1, LIMITS.clipSteps),
         notes: init?.notes ?? [],
       };
       const sessionMatrix = { ...s.sessionMatrix };
       if (slotIndex !== undefined) {
+        const row = clampInt(slotIndex, 0, LIMITS.sceneRows - 1);
         const slots = [...(sessionMatrix[trackId] ?? [])];
-        while (slots.length <= slotIndex) slots.push(null);
-        slots[slotIndex] = id;
+        while (slots.length <= row) slots.push(null);
+        slots[row] = id;
         sessionMatrix[trackId] = slots;
       }
       return {
@@ -432,9 +442,10 @@ export const useProjectStore = create<ProjectState>()((set) => ({
 
   setSlot: (trackId, slotIndex, clipId) =>
     set((s) => {
+      const row = clampInt(slotIndex, 0, LIMITS.sceneRows - 1);
       const slots = [...(s.sessionMatrix[trackId] ?? [])];
-      while (slots.length <= slotIndex) slots.push(null);
-      slots[slotIndex] = clipId;
+      while (slots.length <= row) slots.push(null);
+      slots[row] = clipId;
       const sessionMatrix = { ...s.sessionMatrix, [trackId]: slots };
       return { sessionMatrix, scenes: projectScenes(s.scenes, sessionMatrix, s.tracks) };
     }),
@@ -476,6 +487,11 @@ export const useProjectStore = create<ProjectState>()((set) => ({
         ...Object.values(s.sessionMatrix).map((slots) => slots.length),
         0,
       );
+      // Every row is rendered across every track — refuse to grow past the bound.
+      if (rowCount >= LIMITS.sceneRows) {
+        index = LIMITS.sceneRows - 1;
+        return s;
+      }
       index = rowCount;
       const sessionMatrix = { ...s.sessionMatrix };
       const slotByTrack: Record<string, string | null> = {};
@@ -534,28 +550,45 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   // ---- arrangement ----
   addToArrangement: (clipId, trackId, startBar, lengthBars) => {
     const id = uid();
-    set((s) => ({
-      arrangementClips: [
-        ...s.arrangementClips,
-        { id, clipId, trackId, startBar: Math.max(0, startBar), lengthBars: Math.max(1, lengthBars) },
-      ],
-    }));
+    set((s) => {
+      const start = clampInt(startBar, 0, LIMITS.arrangementBars - 1);
+      return {
+        arrangementClips: [
+          ...s.arrangementClips,
+          {
+            id,
+            clipId,
+            trackId,
+            startBar: start,
+            lengthBars: clampInt(lengthBars, 1, LIMITS.arrangementBars - start),
+          },
+        ],
+      };
+    });
     return id;
   },
 
   moveArrangementClip: (arrangementClipId, startBar, trackId) =>
     set((s) => ({
-      arrangementClips: s.arrangementClips.map((a) =>
-        a.id === arrangementClipId
-          ? { ...a, startBar: Math.max(0, startBar), trackId: trackId ?? a.trackId }
-          : a,
-      ),
+      arrangementClips: s.arrangementClips.map((a) => {
+        if (a.id !== arrangementClipId) return a;
+        const start = clampInt(startBar, 0, LIMITS.arrangementBars - 1);
+        return {
+          ...a,
+          startBar: start,
+          // Moving right must not push the block's end past the bound.
+          lengthBars: Math.min(a.lengthBars, LIMITS.arrangementBars - start),
+          trackId: trackId ?? a.trackId,
+        };
+      }),
     })),
 
   resizeArrangementClip: (arrangementClipId, lengthBars) =>
     set((s) => ({
       arrangementClips: s.arrangementClips.map((a) =>
-        a.id === arrangementClipId ? { ...a, lengthBars: Math.max(1, lengthBars) } : a,
+        a.id === arrangementClipId
+          ? { ...a, lengthBars: clampInt(lengthBars, 1, LIMITS.arrangementBars - a.startBar) }
+          : a,
       ),
     })),
 
@@ -576,14 +609,15 @@ export const useProjectStore = create<ProjectState>()((set) => ({
   setView: (view: ViewMode) => set({ view }),
 
   setLoop: (loop) =>
-    set({
-      loop:
-        loop === null
-          ? null
-          : {
-              startBar: Math.max(0, Math.floor(loop.startBar)),
-              lengthBars: Math.max(1, Math.floor(loop.lengthBars)),
-            },
+    set(() => {
+      if (loop === null) return { loop: null };
+      const startBar = clampInt(loop.startBar, 0, LIMITS.arrangementBars - 1);
+      return {
+        loop: {
+          startBar,
+          lengthBars: clampInt(loop.lengthBars, 1, LIMITS.arrangementBars - startBar),
+        },
+      };
     }),
 
   setMasterVolume: (volume) => set({ masterVolume: clamp(volume, 0, 1) }),

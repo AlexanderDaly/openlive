@@ -14,7 +14,7 @@
  * audio engine follows automatically (store → engine, never the reverse).
  */
 import { useProjectStore } from '@/store/projectStore';
-import { DEFAULT_TRACK_FX } from '@/types/daw';
+import { DEFAULT_TRACK_FX, LIMITS, STEPS_PER_BAR } from '@/types/daw';
 import type {
   ArrangementClip,
   Clip,
@@ -99,6 +99,20 @@ const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(mi
 /* DROPPED rather than passed through — a malformed clip that reaches  */
 /* the engine or the grid would throw during render, and a bad         */
 /* autosave would then reproduce that crash on every reload.           */
+/*                                                                     */
+/* Two failure modes need more than shape checks:                      */
+/*                                                                     */
+/*  1. Inherited keys. `clips[someId]` on a plain object answers for   */
+/*     'constructor', 'toString', … — so a slot or arrangement block   */
+/*     naming one passed reference validation and handed the engine an */
+/*     `Object` where a Clip belonged (`clip.notes.map` → TypeError    */
+/*     inside the audio callback). Keyed maps are therefore built with */
+/*     `Object.create(null)`, reserved names are rejected as ids, and  */
+/*     every reference check uses `Object.hasOwn`.                     */
+/*  2. Extreme magnitudes. Views turn geometry straight into DOM, so a */
+/*     clip at bar 1e9 is not a rendering artefact — it is ~1e9 ruler  */
+/*     cells and a dead tab. Everything dimensional is clamped to      */
+/*     `LIMITS`, and oversized collections are truncated.              */
 /* ------------------------------------------------------------------ */
 
 const str = (v: unknown, fallback: string): string => (typeof v === 'string' ? v : fallback);
@@ -109,11 +123,24 @@ const num = (v: unknown, fallback: number): number =>
 const bool = (v: unknown, fallback: boolean): boolean =>
   typeof v === 'boolean' ? v : fallback;
 
-/** Non-empty string id, or null when unusable. */
-const id = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+/**
+ * Keys that a plain object answers for without ever having been assigned.
+ * Rejected as ids so they can never be used as a map key or a reference.
+ */
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-const int = (v: unknown, fallback: number, min: number): number =>
-  Math.max(min, Math.floor(num(v, fallback)));
+const isSafeKey = (key: string): boolean => key !== '' && !RESERVED_KEYS.has(key);
+
+/** Non-empty, non-reserved string id, or null when unusable. */
+const id = (v: unknown): string | null =>
+  typeof v === 'string' && isSafeKey(v) ? v : null;
+
+/** Own-property lookup — never answers from the prototype chain. */
+const has = (map: object, key: string): boolean => Object.hasOwn(map, key);
+
+/** Integer clamped into [min, max]; non-numeric input falls back. */
+const int = (v: unknown, fallback: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, Math.floor(num(v, fallback))));
 
 const TRACK_TYPES: readonly TrackType[] = ['midi', 'drums'];
 const INSTRUMENTS: readonly InstrumentKind[] = ['drumkit', 'bass', 'keys'];
@@ -155,18 +182,25 @@ const coerceTrack = (raw: unknown, index: number): Track | null => {
   };
 };
 
-/** Notes are the hot path in the engine — a bad one is dropped, not repaired. */
-const coerceNote = (raw: unknown): NoteEvent | null => {
+/**
+ * Notes are the hot path in the engine — a bad one is dropped, not repaired.
+ * Steps outside the pattern are dropped rather than clamped: they are
+ * already silent (the Part loops at `lengthSteps`) and invisible in the
+ * grid, so folding them onto the last step would invent notes.
+ */
+const coerceNote = (raw: unknown, lengthSteps: number): NoteEvent | null => {
   if (!isRecord(raw)) return null;
   const note = id(raw.note);
   if (!note || typeof raw.step !== 'number' || !Number.isFinite(raw.step)) return null;
+  const step = Math.floor(raw.step);
+  if (step < 0 || step >= lengthSteps) return null;
   const event: NoteEvent = {
-    step: Math.max(0, Math.floor(raw.step)),
+    step,
     note,
     velocity: clamp(num(raw.velocity, 0.9), 0, 1),
   };
   // `duration` is optional in the model — only carry it when present.
-  if (raw.duration !== undefined) event.duration = int(raw.duration, 1, 1);
+  if (raw.duration !== undefined) event.duration = int(raw.duration, 1, 1, lengthSteps);
   return event;
 };
 
@@ -175,15 +209,19 @@ const coerceClip = (raw: unknown, key: string): Clip | null => {
   const clipId = id(raw.id) ?? key;
   const trackId = id(raw.trackId);
   if (!clipId || !trackId) return null;
+  const lengthSteps = int(raw.lengthSteps, STEPS_PER_BAR, 1, LIMITS.clipSteps);
   const notes = Array.isArray(raw.notes)
-    ? raw.notes.map(coerceNote).filter((n): n is NoteEvent => n !== null)
+    ? raw.notes
+        .slice(0, LIMITS.notesPerClip)
+        .map((n) => coerceNote(n, lengthSteps))
+        .filter((n): n is NoteEvent => n !== null)
     : [];
   return {
     id: clipId,
     trackId,
     name: str(raw.name, 'Clip'),
     color: str(raw.color, '#4a90d9'),
-    lengthSteps: int(raw.lengthSteps, 16, 1),
+    lengthSteps,
     notes,
   };
 };
@@ -198,13 +236,16 @@ const coerceArrangementClip = (
   const clipId = id(raw.clipId);
   const trackId = id(raw.trackId);
   // A block pointing at a missing clip or track can never render or sound.
-  if (!clipId || !trackId || !clips[clipId] || !trackIds.has(trackId)) return null;
+  // `has` (not `clips[clipId]`) so an inherited key is not mistaken for one.
+  if (!clipId || !trackId || !has(clips, clipId) || !trackIds.has(trackId)) return null;
+  const startBar = int(raw.startBar, 0, 0, LIMITS.arrangementBars - 1);
   return {
     id: id(raw.id) ?? `arr-${index + 1}`,
     clipId,
     trackId,
-    startBar: int(raw.startBar, 0, 0),
-    lengthBars: int(raw.lengthBars, 1, 1),
+    startBar,
+    // Keep the block's end inside the timeline bound as well as its start.
+    lengthBars: int(raw.lengthBars, 1, 1, LIMITS.arrangementBars - startBar),
   };
 };
 
@@ -229,37 +270,53 @@ export function coerceProjectFile(data: unknown): ProjectContent {
   if (!Array.isArray(c.scenes)) throw new Error('Missing scenes');
   if (!Array.isArray(c.arrangementClips)) throw new Error('Missing arrangement');
 
+  const loopStart = isRecord(c.loop)
+    ? int(c.loop.startBar, 0, 0, LIMITS.arrangementBars - 1)
+    : 0;
   const loop = isRecord(c.loop)
     ? {
-        startBar: Math.max(0, Math.floor(Number(c.loop.startBar) || 0)),
-        lengthBars: Math.max(1, Math.floor(Number(c.loop.lengthBars) || 1)),
+        startBar: loopStart,
+        lengthBars: int(c.loop.lengthBars, 1, 1, LIMITS.arrangementBars - loopStart),
       }
     : null;
 
   const tracks = c.tracks
     .map((t, i) => coerceTrack(t, i))
-    .filter((t): t is Track => t !== null);
+    .filter((t): t is Track => t !== null)
+    .slice(0, LIMITS.tracks);
   const trackIds = new Set(tracks.map((t) => t.id));
 
-  const clips: Record<string, Clip> = {};
+  // Null-prototype: `clips['constructor']` must be undefined, not Object.
+  const clips: Record<string, Clip> = Object.create(null) as Record<string, Clip>;
+  let pooled = 0;
   for (const [key, raw] of Object.entries(c.clips)) {
+    if (pooled >= LIMITS.poolClips) break;
+    if (!isSafeKey(key)) continue;
     const clip = coerceClip(raw, key);
     // Keep the pool addressable by the key the rest of the project uses.
-    if (clip && trackIds.has(clip.trackId)) clips[key] = { ...clip, id: key };
+    if (clip && trackIds.has(clip.trackId)) {
+      clips[key] = { ...clip, id: key };
+      pooled += 1;
+    }
   }
 
   // Rows only exist for live tracks; slots only point at live clips.
-  const sessionMatrix: Record<string, (string | null)[]> = {};
+  const sessionMatrix: Record<string, (string | null)[]> = Object.create(null) as Record<
+    string,
+    (string | null)[]
+  >;
   for (const track of tracks) {
-    const row = c.sessionMatrix[track.id];
+    const row = has(c.sessionMatrix, track.id) ? c.sessionMatrix[track.id] : undefined;
     sessionMatrix[track.id] = Array.isArray(row)
-      ? row.map((slot) => (typeof slot === 'string' && clips[slot] ? slot : null))
+      ? row
+          .slice(0, LIMITS.sceneRows)
+          .map((slot) => (typeof slot === 'string' && has(clips, slot) ? slot : null))
       : [];
   }
 
   // `Scene.slotByTrack` is a projection of the matrix, never an independent
   // source of truth — rebuild it so a drifted file cannot lie about scenes.
-  const scenes: Scene[] = c.scenes.map((raw, i) => {
+  const scenes: Scene[] = c.scenes.slice(0, LIMITS.sceneRows).map((raw, i) => {
     const s = isRecord(raw) ? raw : {};
     return {
       id: id(s.id) ?? `scene-${i + 1}`,
@@ -271,6 +328,7 @@ export function coerceProjectFile(data: unknown): ProjectContent {
   });
 
   const arrangementClips = c.arrangementClips
+    .slice(0, LIMITS.arrangementClips)
     .map((a, i) => coerceArrangementClip(a, i, clips, trackIds))
     .filter((a): a is ArrangementClip => a !== null);
 
@@ -288,7 +346,7 @@ export function coerceProjectFile(data: unknown): ProjectContent {
     sessionMatrix,
     scenes,
     arrangementClips,
-    selectedClipId: selectedClipId && clips[selectedClipId] ? selectedClipId : null,
+    selectedClipId: selectedClipId && has(clips, selectedClipId) ? selectedClipId : null,
   };
 }
 

@@ -5,6 +5,7 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createDemoContent, useProjectStore } from '@/store/projectStore';
+import { LIMITS } from '@/types/daw';
 
 const resetStore = () => {
   useProjectStore.setState({
@@ -209,6 +210,42 @@ describe('transport / meta', () => {
     expect(S().masterVolume).toBe(1);
     S().setMasterVolume(-1);
     expect(S().masterVolume).toBe(0);
+  });
+});
+
+describe('geometry bounds', () => {
+  it('clamps arrangement placement, moves and resizes inside the timeline', () => {
+    const id = S().addToArrangement('clip-beat-a', 'track-drums', 1e9, 1e6);
+    const placed = S().arrangementClips.find((a) => a.id === id)!;
+    expect(placed.startBar + placed.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+
+    S().resizeArrangementClip(id, 1e9);
+    S().moveArrangementClip(id, 1e9);
+    const moved = S().arrangementClips.find((a) => a.id === id)!;
+    expect(moved.startBar).toBeLessThan(LIMITS.arrangementBars);
+    expect(moved.startBar + moved.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('clamps the loop region', () => {
+    S().setLoop({ startBar: 5e8, lengthBars: 5e8 });
+    const loop = S().loop!;
+    expect(loop.startBar + loop.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('clamps slot indices instead of allocating a giant row', () => {
+    S().setSlot('track-drums', 1e7, 'clip-beat-a');
+    expect(S().sessionMatrix['track-drums']!.length).toBeLessThanOrEqual(LIMITS.sceneRows);
+    const created = S().createClip('track-bass', 1e7);
+    expect(S().sessionMatrix['track-bass']!.length).toBeLessThanOrEqual(LIMITS.sceneRows);
+    expect(S().clips[created]).toBeDefined();
+  });
+
+  it('clamps clip length and refuses to grow scenes past the bound', () => {
+    const id = S().createClip('track-keys', 0, { lengthSteps: 5e8 });
+    expect(S().clips[id]?.lengthSteps).toBe(LIMITS.clipSteps);
+
+    for (let i = 0; i < LIMITS.sceneRows + 5; i++) S().addScene();
+    expect(S().scenes.length).toBeLessThanOrEqual(LIMITS.sceneRows);
   });
 });
 

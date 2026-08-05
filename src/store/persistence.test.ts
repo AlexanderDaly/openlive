@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDemoContent, useProjectStore } from '@/store/projectStore';
+import { LIMITS } from '@/types/daw';
 import {
   STORAGE_KEY,
   coerceProjectFile,
@@ -217,6 +218,152 @@ describe('hostile payloads', () => {
     expect(() => useProjectStore.getState().setSlot('t1', 2, null)).not.toThrow();
     expect(() => useProjectStore.getState().launchScene(0)).not.toThrow();
     expect(() => useProjectStore.getState().removeTrack('t1')).not.toThrow();
+  });
+});
+
+describe('prototype-inherited keys', () => {
+  const wrap = (content: unknown) => ({ app: 'openlive', version: 1, content });
+  const base = {
+    tracks: [{ id: 't1' }],
+    clips: { c: { id: 'c', trackId: 't1' } },
+    sessionMatrix: {},
+    scenes: [],
+    arrangementClips: [],
+  };
+
+  it('does not answer clip lookups from the prototype chain', () => {
+    const { clips } = coerceProjectFile(wrap(base));
+    // Before: `clips['constructor']` was Object — truthy, so every reference
+    // check passed and the engine got a non-Clip (`clip.notes.map` → throw).
+    for (const key of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect((clips as Record<string, unknown>)[key]).toBeUndefined();
+    }
+  });
+
+  it('rejects inherited names used as slot / arrangement / selection references', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...base,
+        sessionMatrix: { t1: ['constructor', 'toString', 'c'] },
+        arrangementClips: [
+          { id: 'a1', clipId: 'constructor', trackId: 't1' },
+          { id: 'a2', clipId: 'c', trackId: 'toString' },
+          { id: 'a3', clipId: 'c', trackId: 't1' },
+        ],
+        selectedClipId: 'toString',
+      }),
+    );
+    expect(coerced.sessionMatrix.t1).toEqual([null, null, 'c']);
+    expect(coerced.arrangementClips.map((a) => a.id)).toEqual(['a3']);
+    expect(coerced.selectedClipId).toBeNull();
+  });
+
+  it('refuses reserved names as entity ids', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        ...base,
+        tracks: [{ id: '__proto__' }, { id: 'constructor' }, { id: 't1' }],
+        clips: {
+          __proto__: { id: '__proto__', trackId: 't1' },
+          constructor: { id: 'constructor', trackId: 't1' },
+          c: { id: 'c', trackId: 't1' },
+        },
+      }),
+    );
+    expect(coerced.tracks.map((t) => t.id)).toEqual(['t1']);
+    expect(Object.keys(coerced.clips)).toEqual(['c']);
+    expect(Object.getPrototypeOf(coerced.clips)).toBeNull();
+  });
+
+  it('ignores an inherited session-matrix row', () => {
+    // `c.sessionMatrix['t1']` must not resolve through the prototype either.
+    const hostile = JSON.parse('{"__proto__":{"t1":["c"]}}') as Record<string, unknown>;
+    const coerced = coerceProjectFile(wrap({ ...base, sessionMatrix: hostile }));
+    expect(coerced.sessionMatrix.t1).toEqual([]);
+  });
+});
+
+describe('geometry bounds', () => {
+  const wrap = (content: unknown) => ({ app: 'openlive', version: 1, content });
+
+  it('clamps arrangement blocks inside the timeline bound', () => {
+    const { arrangementClips } = coerceProjectFile(
+      wrap({
+        tracks: [{ id: 't1' }],
+        clips: { c: { id: 'c', trackId: 't1' } },
+        sessionMatrix: {},
+        scenes: [],
+        arrangementClips: [{ id: 'a1', clipId: 'c', trackId: 't1', startBar: 1e9, lengthBars: 1e6 }],
+      }),
+    );
+    const a = arrangementClips[0]!;
+    // ArrangementView renders one ruler cell per bar of `startBar + lengthBars`.
+    expect(a.startBar).toBeLessThan(LIMITS.arrangementBars);
+    expect(a.startBar + a.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('clamps the loop region and keeps its end inside the bound', () => {
+    const { loop } = coerceProjectFile(
+      wrap({
+        tracks: [],
+        clips: {},
+        sessionMatrix: {},
+        scenes: [],
+        arrangementClips: [],
+        loop: { startBar: 5e8, lengthBars: 5e8 },
+      }),
+    );
+    expect(loop!.startBar + loop!.lengthBars).toBeLessThanOrEqual(LIMITS.arrangementBars);
+  });
+
+  it('bounds clip length, note steps and note count', () => {
+    const { clips } = coerceProjectFile(
+      wrap({
+        tracks: [{ id: 't1' }],
+        clips: {
+          c: {
+            id: 'c',
+            trackId: 't1',
+            lengthSteps: 5e8,
+            notes: [
+              { step: 0, note: 'C1', duration: 1e9 },
+              { step: 9e9, note: 'D1' }, // beyond the pattern — silent and invisible
+              { step: -4, note: 'E1' },
+            ],
+          },
+        },
+        sessionMatrix: {},
+        scenes: [],
+        arrangementClips: [],
+      }),
+    );
+    const clip = clips.c!;
+    expect(clip.lengthSteps).toBe(LIMITS.clipSteps);
+    expect(clip.notes).toHaveLength(1);
+    expect(clip.notes[0]?.duration).toBeLessThanOrEqual(clip.lengthSteps);
+  });
+
+  it('truncates oversized collections', () => {
+    const coerced = coerceProjectFile(
+      wrap({
+        tracks: Array.from({ length: 500 }, (_, i) => ({ id: `t${i}` })),
+        clips: Object.fromEntries(
+          Array.from({ length: 3000 }, (_, i) => [`c${i}`, { id: `c${i}`, trackId: 't0' }]),
+        ),
+        sessionMatrix: { t0: new Array(50_000).fill(null) },
+        scenes: new Array(50_000).fill({ id: 's', name: 'x' }),
+        arrangementClips: Array.from({ length: 5000 }, (_, i) => ({
+          id: `a${i}`,
+          clipId: 'c0',
+          trackId: 't0',
+        })),
+      }),
+    );
+    expect(coerced.tracks).toHaveLength(LIMITS.tracks);
+    expect(Object.keys(coerced.clips)).toHaveLength(LIMITS.poolClips);
+    expect(coerced.sessionMatrix.t0).toHaveLength(LIMITS.sceneRows);
+    expect(coerced.scenes).toHaveLength(LIMITS.sceneRows);
+    expect(coerced.arrangementClips).toHaveLength(LIMITS.arrangementClips);
   });
 });
 
